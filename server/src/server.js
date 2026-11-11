@@ -12,6 +12,18 @@ const { verifyAccessToken } = require('./utils/jwt');
 async function main() {
   await connectDB(env.mongoUri);
 
+  // Idempotent demo seed so the public demo login always works.
+  // Non-fatal: a failed seed never blocks boot (demo data is optional).
+  // Production opts in explicitly via SEED_DEMO=true (see docker-compose).
+  if (env.nodeEnv !== 'production' || process.env.SEED_DEMO === 'true') {
+    try {
+      const { ensureDemo } = require('./scripts/seedDemo');
+      await ensureDemo();
+    } catch (e) {
+      logger.warn(`demo seed skipped: ${e.message}`);
+    }
+  }
+
   const app = createApp();
   const server = http.createServer(app);
 

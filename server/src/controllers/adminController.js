@@ -76,6 +76,33 @@ const deleteUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) throw new ApiError(404, 'User not found', 'NOT_FOUND');
   if (user._id.toString() === req.user._id.toString()) throw new ApiError(400, 'Cannot delete yourself', 'VALIDATION_ERROR');
+
+  // Cascade: remove the user's owned resources the same way project deletion does,
+  // so no orphaned projects/keys/webhooks/tokens remain after an admin delete.
+  const ownedProjects = await ApiProject.find({ owner: user._id }).select('_id').lean();
+  const projectIds = ownedProjects.map((p) => p._id);
+  const ApiVersion = require('../models/ApiVersion');
+  const ApiEndpoint = require('../models/ApiEndpoint');
+  const Webhook = require('../models/Webhook');
+  const WebhookDelivery = require('../models/WebhookDelivery');
+  const RefreshToken = require('../models/RefreshToken');
+  if (projectIds.length) {
+    await Promise.all([
+      ApiEndpoint.deleteMany({ project: { $in: projectIds } }),
+      ApiVersion.deleteMany({ project: { $in: projectIds } }),
+      WebhookDelivery.deleteMany({ project: { $in: projectIds } }),
+      Webhook.deleteMany({ project: { $in: projectIds } }),
+      ApiKey.deleteMany({ project: { $in: projectIds } }),
+      ApiRequestLog.deleteMany({ project: { $in: projectIds } }),
+    ]);
+    await ApiProject.deleteMany({ _id: { $in: projectIds } });
+  }
+  await Promise.all([
+    ApiKey.deleteMany({ owner: user._id }),
+    Webhook.deleteMany({ owner: user._id }),
+    RefreshToken.deleteMany({ user: user._id }),
+    Notification.deleteMany({ user: user._id }),
+  ]);
   await user.deleteOne();
   await audit(req.user, 'user.deleted', String(user._id));
   res.json({ success: true, data: { message: 'User deleted' } });

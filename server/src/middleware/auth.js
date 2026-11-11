@@ -33,17 +33,4 @@ function authorize(...roles) {
   };
 }
 
-// Generic owner-or-admin: expects req.resourceOwnerId (string) to be set by controller/middleware.
-// If not set, passes through and lets controller enforce ownership.
-function authorizeOwnerOrAdmin(req, res, next) {
-  if (!req.user) return next(new ApiError(401, 'Not authorized', 'UNAUTHORIZED'));
-  if (req.user.role === 'admin') return next();
-  if (req.resourceOwnerId) {
-    if (req.resourceOwnerId.toString() === req.user._id.toString()) return next();
-    return next(new ApiError(403, 'Forbidden: not owner', 'FORBIDDEN'));
-  }
-  // No resource owner context yet — allow, controller must check
-  return next();
-}
-
-module.exports = { protect, authorize, authorizeOwnerOrAdmin };
+module.exports = { protect, authorize };

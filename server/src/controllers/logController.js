@@ -111,7 +111,7 @@ const exportLogs = asyncHandler(async (req, res) => {
   const filter = buildLogFilter(req.query, ids);
   const items = await ApiRequestLog.find(filter).sort({ timestamp: -1 }).limit(2000).lean();
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = ['time,method,path,statusCode,latencyMs,ip'];
+  const rows = ['time,method,path,statusCode,responseTimeMs,ip'];
   for (const l of items) rows.push([l.timestamp?.toISOString?.() || l.timestamp, l.method, l.path, l.statusCode, l.responseTimeMs, l.ip].map(esc).join(','));
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="logs.csv"');

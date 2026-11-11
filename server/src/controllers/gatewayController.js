@@ -170,13 +170,32 @@ const handleGateway = asyncHandler(async (req, res) => {
     }
   }
   requestPath = normalizePath(requestPath);
-  // Path traversal guard: reject encoded or literal .. segments
-  const rawLower = String(req.originalUrl || '').toLowerCase();
-  if (rawLower.includes('..') || rawLower.includes('%2e') || rawLower.includes('%2f%2e')) {
+  // Path traversal guard: decode first, then reject traversal SEGMENTS (exactly
+  // '.' or '..'), encoded slashes, and backslashes. A blanket '..' substring match
+  // also rejected legitimate segments like /files/a..b — those are fine because
+  // routing/matching never treats inner dots as separators.
+  let decodedPath = requestPath;
+  try {
+    decodedPath = decodeURIComponent(requestPath);
+  } catch (_) {}
+  const segments = String(decodedPath).split('/');
+  if (
+    segments.some((s) => s === '..' || s === '.') ||
+    decodedPath.includes('\\') ||
+    /%2f|%5c/i.test(String(req.originalUrl || ''))
+  ) {
     throw new ApiError(400, 'Invalid path', 'INVALID_PATH');
   }
 
-  const project = await ApiProject.findById(projectId);
+  // Resolve project by id (ObjectId) or by slug — slugs make public demo
+  // links like /gateway/demo-weather-api/current work without exposing ids.
+  let project = null;
+  if (/^[a-fA-F0-9]{24}$/.test(String(projectId))) {
+    project = await ApiProject.findById(projectId);
+  }
+  if (!project) {
+    project = await ApiProject.findOne({ slug: String(projectId).toLowerCase().trim() });
+  }
   if (!project) {
     req.logErrorMessage = 'Project not found';
     throw new ApiError(404, 'Project not found', 'PROJECT_NOT_FOUND');
@@ -229,9 +248,9 @@ const handleGateway = asyncHandler(async (req, res) => {
     }
   }
 
-  // Simulate latency
-  const latency = Math.min(endpoint.latencyMs || 0, 2000);
-  if (latency > 0) await new Promise((r) => setTimeout(r, Math.min(latency, 500)));
+  // Simulate latency (capped — never let a mock block for seconds)
+  const latency = Math.min(endpoint.latencyMs || 0, 500);
+  if (latency > 0) await new Promise((r) => setTimeout(r, latency));
 
   // --- Proxy mode: if project has upstreamUrl, forward to real API ---
   if (project.upstreamUrl && String(project.upstreamUrl).trim()) {

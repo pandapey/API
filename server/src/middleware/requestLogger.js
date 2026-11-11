@@ -17,7 +17,9 @@ function gatewayRequestLogger(req, res, next) {
   res.on('finish', async () => {
     try {
       const project = req.gatewayProject || req.apiProject || null;
-      const projectId = project ? project._id || project : req.params.projectId;
+      // Only log when the project actually resolved — never log against an
+      // arbitrary/possibly-nonexistent id from the URL (avoids polluting logs).
+      const projectId = project ? (project._id || project) : null;
       if (!projectId) return;
       const responseTimeMs = Date.now() - start;
       const fullPath = req.originalUrl || req.url;

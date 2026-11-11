@@ -1,4 +1,5 @@
 const logger = require('../config/logger');
+const env = require('../config/env');
 
 /**
  * Workers: if BullMQ + redis available, start real workers.
@@ -40,14 +41,13 @@ async function startWorkers() {
   }
   try {
     const { Worker } = require('bullmq');
-    const url = process.env.REDIS_URL;
     const w = new Worker(
       'webhook-delivery',
       async (job) => {
         const { processDeliveryJob } = require('../services/webhookService');
         await processDeliveryJob(job.data);
       },
-      { connection: { url } }
+      { connection: { url: env.redisUrl, maxRetriesPerRequest: null } }
     );
     w.on('failed', (job, err) => logger.warn(`Worker job ${job?.id} failed: ${err.message}`));
     logger.info('BullMQ workers started');

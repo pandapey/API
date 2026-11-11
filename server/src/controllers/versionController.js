@@ -70,12 +70,26 @@ const update = asyncHandler(async (req, res) => {
   await loadProject(req);
   const doc = await ApiVersion.findOne({ _id: req.params.versionId, project: req.params.id });
   if (!doc) throw new ApiError(404, 'Version not found', 'NOT_FOUND');
+  const previousVersion = doc.version;
   const ALLOWED = ['version', 'description', 'isDefault', 'status'];
   for (const k of ALLOWED) {
     if (req.body[k] !== undefined) doc[k] = req.body[k];
   }
+  if (req.body.version !== undefined) {
+    const clean = String(req.body.version).trim().slice(0, 40);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/.test(clean)) {
+      throw new ApiError(400, 'version must be 1-40 chars: letters, numbers, . _ - (e.g. v1, v2)', 'VALIDATION_ERROR');
+    }
+    doc.version = clean;
+  }
   if (req.body.isDefault) await ApiVersion.updateMany({ project: doc.project, _id: { $ne: doc._id } }, { $set: { isDefault: false } });
   await doc.save();
+  // Endpoints denormalize the version STRING; keep them in sync so gateway
+  // version routing (`?version=`) keeps working after a rename.
+  if (doc.version !== previousVersion) {
+    const ApiEndpoint = require('../models/ApiEndpoint');
+    await ApiEndpoint.updateMany({ project: doc.project, versionId: doc._id }, { $set: { version: doc.version } });
+  }
   res.json({ success: true, data: doc });
 });
 

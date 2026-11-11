@@ -1,4 +1,3 @@
-const mongoSanitize = require('express-mongo-sanitize');
 const sanitize = require('mongo-sanitize');
 
 function sanitizeMiddleware(req, res, next) {

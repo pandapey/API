@@ -5,6 +5,8 @@ const createWebhookSchema = z.object({
   events: z.array(z.string()).min(1).optional().default(['api.request']),
   secret: z.string().max(500).optional().nullable(),
   isActive: z.boolean().optional(),
+  // legacy alias accepted on updates so old clients keep working
+  active: z.boolean().optional(),
   headers: z.record(z.string()).optional(),
 });
 

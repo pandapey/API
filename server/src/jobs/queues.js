@@ -3,30 +3,28 @@
  * else exports addJob(name, data) that executes inline.
  */
 const logger = require('../config/logger');
-const { redisAvailable, getRedisClient } = require('../config/redis');
+const env = require('../config/env');
+const { redisAvailable } = require('../config/redis');
 
 let webhookQueue = null;
 let useBull = false;
 
 try {
-  if (process.env.REDIS_URL) {
-    const { Queue } = require('bullmq');
-    // lazy init after redis check
-    const tryInit = async () => {
-      const { initRedis } = require('../config/redis');
-      await initRedis();
-      if (redisAvailable()) {
-        const conn = getRedisClient();
-        // BullMQ needs its own connection opts; reuse URL
-        webhookQueue = new Queue('webhook-delivery', { connection: { url: process.env.REDIS_URL } });
-        // avoid unhandled error crash
-        webhookQueue.on('error', (e) => logger.warn(`BullMQ queue error: ${e.message}`));
-        useBull = true;
-        logger.info('BullMQ queues enabled');
-      }
-    };
-    tryInit().catch(() => {});
-  }
+  const { Queue } = require('bullmq');
+  // lazy init after redis check
+  const tryInit = async () => {
+    const { initRedis } = require('../config/redis');
+    await initRedis();
+    if (redisAvailable()) {
+      // BullMQ needs its own connection opts; reuse URL
+      webhookQueue = new Queue('webhook-delivery', { connection: { url: env.redisUrl, maxRetriesPerRequest: null } });
+      // avoid unhandled error crash
+      webhookQueue.on('error', (e) => logger.warn(`BullMQ queue error: ${e.message}`));
+      useBull = true;
+      logger.info('BullMQ queues enabled');
+    }
+  };
+  tryInit().catch(() => {});
 } catch (err) {
   logger.warn(`BullMQ unavailable, inline fallback: ${err.message}`);
 }
@@ -34,7 +32,10 @@ try {
 async function addJob(name, data) {
   if (useBull && webhookQueue) {
     try {
-      await webhookQueue.add(name, data, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } });
+      // attempts: 1 — the delivery function itself retries with backoff and
+      // records attempts on the WebhookDelivery doc. BullMQ-level retries would
+      // re-run the whole job from scratch and amplify HTTP calls (up to 9x).
+      await webhookQueue.add(name, data, { attempts: 1 });
       return { queued: true };
     } catch (err) {
       logger.warn(`BullMQ addJob failed, inline fallback: ${err.message}`);

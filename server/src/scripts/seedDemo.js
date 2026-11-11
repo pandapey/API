@@ -16,8 +16,11 @@ const ApiEndpoint = require('../models/ApiEndpoint');
 const ApiKey = require('../models/ApiKey');
 const { generateApiKey } = require('../utils/apiKey');
 
+/**
+ * Idempotent demo seed. Safe to call with an existing mongoose connection
+ * (server boot) — only the CLI wrapper below manages the connection itself.
+ */
 async function ensureDemo() {
-  await mongoose.connect(env.mongoUri);
   const email = DEMO_CREDENTIALS.email.toLowerCase();
   let user = await User.findOne({ email });
   if (!user) {
@@ -98,15 +101,18 @@ async function ensureDemo() {
   }
   // eslint-disable-next-line no-console
   console.log(`[seed] done. Demo login: ${email} / (see server/src/config/demo.js)`);
-  await mongoose.disconnect();
 }
 
 if (require.main === module) {
-  ensureDemo().catch((e) => {
-    // eslint-disable-next-line no-console
-    console.error('[seed] failed:', e.message);
-    process.exit(1);
-  });
+  mongoose
+    .connect(env.mongoUri)
+    .then(() => ensureDemo())
+    .then(() => mongoose.disconnect())
+    .catch((e) => {
+      // eslint-disable-next-line no-console
+      console.error('[seed] failed:', e.message);
+      process.exit(1);
+    });
 }
 
 module.exports = { ensureDemo };

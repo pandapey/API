@@ -8,9 +8,12 @@ function get(name, fallback) {
 const DEFAULT_ACCESS = 'dev-access-secret-change-me-please-32chars';
 const DEFAULT_REFRESH = 'dev-refresh-secret-change-me-please-32chars';
 if (get('NODE_ENV', 'development') === 'production') {
+  // Never boot production with publicly-known signing keys (would allow JWT forgery).
   if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
-    // eslint-disable-next-line no-console
-    console.warn('[security] JWT secrets not set in production — refusing to use insecure defaults. Set JWT_ACCESS_SECRET and JWT_REFRESH_SECRET.');
+    throw new Error('[security] JWT_ACCESS_SECRET and JWT_REFRESH_SECRET are required in production. Refusing to boot with insecure defaults.');
+  }
+  if (process.env.JWT_ACCESS_SECRET === DEFAULT_ACCESS || process.env.JWT_REFRESH_SECRET === DEFAULT_REFRESH) {
+    throw new Error('[security] Production JWT secrets must not be the built-in development defaults.');
   }
 } else if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
   // eslint-disable-next-line no-console

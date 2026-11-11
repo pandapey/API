@@ -34,6 +34,8 @@ async function getOverview(projectId, from, to) {
   const match = matchFor(projectId, from, to);
 
   // Single $facet round-trip for range-scoped stats (was 6+ queries + in-memory sort).
+  // NOTE: no $percentile here — it requires MongoDB 7.0+ and would abort the whole
+  // facet on older servers, wiping byEndpoint/byDay. p95 runs as its own query below.
   const [faceted] = await ApiRequestLog.aggregate([
     { $match: match },
     {
@@ -72,15 +74,6 @@ async function getOverview(projectId, from, to) {
           { $match: { statusCode: 429 } },
           { $count: 'count' },
         ],
-        p95: [
-          {
-            $group: {
-              _id: null,
-              // MongoDB 7+: approximate percentile in-DB, no 10k in-memory sort.
-              p95: { $percentile: { input: '$responseTimeMs', p: [0.95], method: 'approximate' } },
-            },
-          },
-        ],
       },
     },
   ]).catch(() => [null]);
@@ -90,19 +83,33 @@ async function getOverview(projectId, from, to) {
   let byEndpoint = faceted?.byEndpoint || [];
   let byDay = faceted?.byDay || [];
   let rateLimited = faceted?.rate?.[0]?.count || 0;
-  let p95 = Array.isArray(faceted?.p95?.[0]?.p95) ? faceted.p95[0].p95[0] : faceted?.p95?.[0]?.p95;
 
-  // Fallback for Mongo versions without $percentile (e.g. older memory-server).
-  if ((p95 == null || Number.isNaN(p95)) && (totals?.total || 0) > 0) {
+  // p95 in a separate aggregation so an unsupported $percentile (Mongo < 7.0)
+  // can never take down byEndpoint/byDay/rateLimited.
+  let p95 = null;
+  if ((totals?.total || 0) > 0) {
     try {
-      const docs = await ApiRequestLog.find(match).select('responseTimeMs').sort({ responseTimeMs: 1 }).limit(10000).lean();
-      const arr = docs.map((d) => d.responseTimeMs).sort((a, b) => a - b);
-      p95 = percentile(arr, 95);
-    } catch {
-      p95 = totals?.avgLatency || 0;
+      const [p] = await ApiRequestLog.aggregate([
+        { $match: match },
+        { $group: { _id: null, p95: { $percentile: { input: '$responseTimeMs', p: [0.95], method: 'approximate' } } } },
+      ]);
+      p95 = Array.isArray(p?.p95) ? p.p95[0] : p?.p95;
+    } catch (_) {
+      p95 = null;
+    }
+    if (p95 == null || Number.isNaN(p95)) {
+      // Fallback: in-memory percentile over the slowest 10k docs.
+      try {
+        const docs = await ApiRequestLog.find(match).select('responseTimeMs').sort({ responseTimeMs: 1 }).limit(10000).lean();
+        const arr = docs.map((d) => d.responseTimeMs).filter((v) => typeof v === 'number').sort((a, b) => a - b);
+        p95 = percentile(arr, 95);
+      } catch {
+        p95 = totals?.avgLatency || 0;
+      }
     }
   }
-  // Ultimate fallback if $facet itself failed (very old Mongo).
+
+  // Fallback if $facet itself failed (very old Mongo).
   if (!totals) {
     const [t] = await ApiRequestLog.aggregate([
       { $match: match },
@@ -120,6 +127,28 @@ async function getOverview(projectId, from, to) {
       byStatus = await ApiRequestLog.aggregate([
         { $match: match },
         { $group: { _id: '$statusCode', count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]);
+    }
+    if (!byEndpoint.length) {
+      byEndpoint = await ApiRequestLog.aggregate([
+        { $match: match },
+        { $group: { _id: '$endpoint', count: { $sum: 1 }, avgLatency: { $avg: '$responseTimeMs' } } },
+        { $sort: { count: -1 } },
+        { $limit: 20 },
+      ]);
+    }
+    if (!byDay.length) {
+      byDay = await ApiRequestLog.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+            count: { $sum: 1 },
+            errors: { $sum: { $cond: [{ $gte: ['$statusCode', 400] }, 1, 0] } },
+            avgLatency: { $avg: '$responseTimeMs' },
+          },
+        },
         { $sort: { _id: 1 } },
       ]);
     }
@@ -174,7 +203,7 @@ async function getOverview(projectId, from, to) {
 
 async function getByEndpoints(projectId, from, to, limit = 20) {
   const match = matchFor(projectId, from, to);
-  return ApiRequestLog.aggregate([
+  const rows = await ApiRequestLog.aggregate([
     { $match: match },
     {
       $group: {
@@ -187,15 +216,25 @@ async function getByEndpoints(projectId, from, to, limit = 20) {
     { $sort: { count: -1 } },
     { $limit: limit },
   ]);
+  // Map into the same shape as overview.byEndpoint so the client renders real labels.
+  return rows.map((r) => ({
+    endpoint: r._id?.endpoint || '',
+    method: r._id?.method || '',
+    count: r.count,
+    avgLatencyMs: Number(Number(r.avgLatency || 0).toFixed(2)),
+    errors: r.errors,
+  }));
 }
 
 async function getByStatus(projectId, from, to) {
   const match = matchFor(projectId, from, to);
-  return ApiRequestLog.aggregate([
+  const rows = await ApiRequestLog.aggregate([
     { $match: match },
     { $group: { _id: '$statusCode', count: { $sum: 1 } } },
     { $sort: { _id: 1 } },
   ]);
+  // Map into the same shape as overview.byStatus ({ status, count }).
+  return rows.map((r) => ({ status: r._id, count: r.count }));
 }
 
 function parseRange(range, fromQ, toQ) {

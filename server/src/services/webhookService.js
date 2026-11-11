@@ -27,7 +27,10 @@ function isBlockedWebhookTarget(targetUrl) {
   }
 }
 
-async function deliverOnce(webhook, event, payload, deliveryDoc) {
+async function deliverOnce(webhook, event, payload, deliveryDoc, { maxAttempts: maxAttemptsOpt } = {}) {
+  // Default 3 attempts with 1s/3s backoff (used by inline execution).
+  // BullMQ jobs pass maxAttempts: 1 because the queue retries the job itself.
+  const maxAttempts = Number.isFinite(maxAttemptsOpt) && maxAttemptsOpt > 0 ? maxAttemptsOpt : 3;
   if (isBlockedWebhookTarget(webhook.url)) {
     const msg = 'Webhook URL target is blocked (private/metadata/localhost)';
     logger.warn(`Webhook ${webhook._id} blocked: ${webhook.url}`);
@@ -71,7 +74,6 @@ async function deliverOnce(webhook, event, payload, deliveryDoc) {
   };
   if (signature) headers['X-Webhook-Signature'] = signature;
 
-  const maxAttempts = 3;
   let lastError = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -136,7 +138,10 @@ async function triggerEvent(projectId, event, payload = {}) {
         status: 'pending',
         attempts: 0,
       });
-      // queue (or inline if no redis)
+      // queue (or inline if no redis). Job data carries no retry hints:
+      // processDeliveryJob always runs deliverOnce's own 3-attempt backoff,
+      // and BullMQ jobs are configured with attempts:1 (no queue-level retry)
+      // so total HTTP deliveries per event stay at exactly 3.
       await addJob('webhook-delivery', { webhookId: h._id.toString(), deliveryId: delivery._id.toString(), event, payload });
       results.push(delivery._id.toString());
     }

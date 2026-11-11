@@ -8,7 +8,8 @@ const registerSchema = z.object({
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1),
+  // Matches the password policy every account was created with (register/reset min 8).
+  password: z.string().min(1).max(128),
 });
 
 const forgotSchema = z.object({
