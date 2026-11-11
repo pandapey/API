@@ -30,3 +30,11 @@ export function StatusBadge({ status }) {
   if (s < 500) return <Badge tone="amber">{s}</Badge>;
   return <Badge tone="red">{s}</Badge>;
 }
+
+/** Project lifecycle badge: published / draft / archived. */
+export function ProjectStatusBadge({ status }) {
+  const s = String(status || 'draft').toLowerCase();
+  if (s === 'published') return <Badge tone="green">published</Badge>;
+  if (s === 'archived') return <Badge tone="slate">archived</Badge>;
+  return <Badge tone="amber">draft</Badge>;
+}

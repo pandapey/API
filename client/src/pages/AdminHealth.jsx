@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
 import { adminService } from '../services/adminService.js';
 import { extractError } from '../services/api.js';
 import Badge from '../components/Badge.jsx';
+import PageHeader from '../components/PageHeader.jsx';
 import Skeleton from '../components/Skeleton.jsx';
 import { ErrorState } from '../components/EmptyState.jsx';
 
@@ -43,18 +44,17 @@ export default function AdminHealth() {
   const services = Array.isArray(raw)
     ? raw
     : raw && typeof raw === 'object'
-      ? Object.entries(raw).filter(([k]) => !['uptime', 'timestamp'].includes(k))
+      ? Object.entries(raw).filter(([k]) => !['time', 'uptimeSec', 'dbState'].includes(k))
       : [];
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white"><Activity size={20} /> System health</h1>
-          <p className="text-sm text-slate-500">Gateway, database and queue status.</p>
-        </div>
-        <button onClick={fetchAll} className="btn-secondary !py-1.5 !text-xs">Re-check</button>
-      </div>
+      <PageHeader
+        icon={Activity}
+        title="System health"
+        subtitle="Gateway, database and queue status."
+        actions={<button onClick={fetchAll} className="btn-secondary !py-1.5 !text-xs" aria-label="Re-run health checks"><RefreshCw size={13} /> Re-check</button>}
+      />
       {error && <ErrorState message={error} onRetry={fetchAll} />}
       {loading ? (
         <Skeleton className="h-48 w-full" />

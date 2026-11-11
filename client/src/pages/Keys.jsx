@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { KeyRound, Plus, Trash2 } from 'lucide-react';
+import { Ban, KeyRound, Plus, RefreshCcw, Trash2 } from 'lucide-react';
 import { keyService } from '../services/keyService.js';
 import { keySchema } from '../schemas/keySchema.js';
 import { useProjects } from '../hooks/useProjects.js';
@@ -10,6 +10,8 @@ import { extractError } from '../services/api.js';
 import Table from '../components/Table.jsx';
 import Modal from '../components/Modal.jsx';
 import ApiKeyModal from '../components/ApiKeyModal.jsx';
+import ConfirmDialog from '../components/ConfirmDialog.jsx';
+import PageHeader from '../components/PageHeader.jsx';
 import Badge from '../components/Badge.jsx';
 import { formatDate, truncate } from '../utils/format.js';
 
@@ -26,7 +28,16 @@ export default function Keys({ embedded = false, projectId: fixedProjectId }) {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [rowBusy, setRowBusy] = useState(false);
   const [rawKey, setRawKey] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null); // { type: 'revoke' | 'delete', row }
+  // Stable "is the component still mounted" check for post-await refreshes.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  const cancelledRef = () => !mountedRef.current;
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm({ resolver: zodResolver(keySchema) });
   const watchedProjectId = watch('projectId');
 
@@ -37,26 +48,31 @@ export default function Keys({ embedded = false, projectId: fixedProjectId }) {
     }
   }, [open, projects, projectFilter, watchedProjectId, setValue]);
 
-  const fetchAll = async () => {
-    setLoading(true);
-    try {
-      const params = projectFilter ? { projectId: projectFilter } : {};
-      const res = await keyService.list(params);
-      setItems(arr(res));
-    } catch (e) {
-      toast.error(extractError(e, 'Failed to load keys'));
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (fixedProjectId) setProjectFilter(fixedProjectId);
   }, [fixedProjectId]);
 
   useEffect(() => {
-    fetchAll();
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      try {
+        const params = projectFilter ? { projectId: projectFilter } : {};
+        const res = await keyService.list(params);
+        if (cancelled) return;
+        setItems(arr(res));
+      } catch (e) {
+        if (cancelled) return;
+        toast.error(extractError(e, 'Failed to load keys'));
+        setItems([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectFilter]);
 
@@ -64,7 +80,11 @@ export default function Keys({ embedded = false, projectId: fixedProjectId }) {
     setBusy(true);
     try {
       const projectId = v.projectId || projectFilter || projects[0]?._id || projects[0]?.id;
-      if (!projectId) return toast.error('Pick a project first');
+      if (!projectId) {
+        toast.error('Pick a project first');
+        setBusy(false);
+        return;
+      }
       const payload = { name: v.name };
       if (v.rateLimit) payload.rateLimitPerMin = Number(v.rateLimit);
       if (v.scopes && String(v.scopes).trim()) {
@@ -79,7 +99,10 @@ export default function Keys({ embedded = false, projectId: fixedProjectId }) {
       toast.success('API key issued');
       setOpen(false);
       reset();
-      fetchAll();
+      setConfirmAction(null);
+      // refresh list
+      const fresh = await keyService.list(projectFilter ? { projectId: projectFilter } : {});
+      if (!cancelledRef()) setItems(arr(fresh));
     } catch (e) {
       toast.error(extractError(e, 'Could not create key'));
     } finally {
@@ -87,30 +110,63 @@ export default function Keys({ embedded = false, projectId: fixedProjectId }) {
     }
   };
 
-  const onDelete = async (row) => {
-    if (!confirm(`Revoke key "${row.name}"? This cannot be undone.`)) return;
+  const onConfirmAction = async () => {
+    if (!confirmAction) return;
+    const { type, row } = confirmAction;
+    setRowBusy(true);
     try {
-      await keyService.delete(row._id || row.id);
-      toast.success('Key revoked');
-      fetchAll();
+      if (type === 'revoke') {
+        await keyService.revoke(row._id || row.id);
+        toast.success(`Key "${row.name}" revoked`);
+      } else {
+        await keyService.delete(row._id || row.id);
+        toast.success(`Key "${row.name}" permanently deleted`);
+      }
+      setConfirmAction(null);
+      const fresh = await keyService.list(projectFilter ? { projectId: projectFilter } : {});
+      if (!cancelledRef()) setItems(arr(fresh));
     } catch (e) {
-      toast.error(extractError(e, 'Revoke failed'));
+      toast.error(extractError(e, type === 'revoke' ? 'Revoke failed' : 'Delete failed'));
+    } finally {
+      setRowBusy(false);
+    }
+  };
+
+  const onRotate = async (row) => {
+    setRowBusy(true);
+    try {
+      const res = await keyService.rotate(row._id || row.id);
+      const raw = res?.apiKey || res?.key || res?.plainKey;
+      setRawKey({ value: raw || '(stored — copy from response)', name: row.name });
+      toast.success('Key rotated — old key revoked, new key shown once');
+      const fresh = await keyService.list(projectFilter ? { projectId: projectFilter } : {});
+      if (!cancelledRef()) setItems(arr(fresh));
+    } catch (e) {
+      toast.error(extractError(e, 'Rotate failed'));
+    } finally {
+      setRowBusy(false);
     }
   };
 
   return (
     <div className="space-y-4">
       {!embedded && (
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-          <div>
-            <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white"><KeyRound size={20} /> API Keys</h1>
-            <p className="text-sm text-slate-500">Issue and revoke keys. Raw values are shown once.</p>
-          </div>
-          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="input !w-auto">
-            <option value="">All projects</option>
-            {projects.map((p) => <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>)}
-          </select>
-        </div>
+        <PageHeader
+          icon={KeyRound}
+          title="API Keys"
+          subtitle="Issue, rotate and revoke keys. Raw values are shown once."
+          actions={
+            <select
+              aria-label="Filter keys by project"
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+              className="input !w-auto"
+            >
+              <option value="">All projects</option>
+              {projects.map((p) => <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>)}
+            </select>
+          }
+        />
       )}
       <div className="flex justify-end">
         <button onClick={() => setOpen(true)} className="btn-primary"><Plus size={16} /> New key</button>
@@ -120,6 +176,7 @@ export default function Keys({ embedded = false, projectId: fixedProjectId }) {
         data={items}
         emptyTitle="No API keys"
         emptyHint="Create a key to authenticate gateway requests."
+        emptyAction={<button onClick={() => setOpen(true)} className="btn-primary"><Plus size={16} /> Issue your first key</button>}
         columns={[
           { key: 'name', title: 'Name', render: (r) => <span className="font-semibold">{r.name}</span> },
           { key: 'prefix', title: 'Prefix', render: (r) => <code className="font-mono text-xs">{truncate(r.prefix || r.keyPrefix || r.masked || '••••', 20)}</code> },
@@ -132,10 +189,43 @@ export default function Keys({ embedded = false, projectId: fixedProjectId }) {
               || (pid ? String(pid).slice(-6) : '—');
             return <span className="text-xs">{pname}</span>;
           } },
+          { key: 'rate', title: 'Limit', render: (r) => <span className="text-xs tabular-nums text-slate-500">{r.rateLimitPerMin ? `${r.rateLimitPerMin}/min` : '—'}</span> },
           { key: 'status', title: 'Status', render: (r) => <Badge tone={r.revoked ? 'red' : 'green'}>{r.revoked ? 'revoked' : 'active'}</Badge> },
           { key: 'createdAt', title: 'Created', render: (r) => <span className="text-xs text-slate-500">{formatDate(r.createdAt)}</span> },
-          { key: 'actions', title: '', render: (r) => (
-            <button onClick={() => onDelete(r)} className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50"><Trash2 size={16} /></button>
+          { key: 'actions', title: 'Actions', render: (r) => (
+            <div className="flex items-center justify-end gap-1">
+              {!r.revoked && (
+                <>
+                  <button
+                    onClick={() => onRotate(r)}
+                    disabled={rowBusy}
+                    className="rounded-lg p-1.5 text-slate-500 transition hover:bg-brand-50 hover:text-brand-600 disabled:opacity-50 dark:hover:bg-brand-950/40"
+                    title="Rotate: revoke this key and issue a new one (new raw value shown once)"
+                    aria-label={`Rotate key ${r.name}`}
+                  >
+                    <RefreshCcw size={15} />
+                  </button>
+                  <button
+                    onClick={() => setConfirmAction({ type: 'revoke', row: r })}
+                    disabled={rowBusy}
+                    className="rounded-lg p-1.5 text-amber-600 transition hover:bg-amber-50 disabled:opacity-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                    title="Revoke: disable the key (usage stats are kept)"
+                    aria-label={`Revoke key ${r.name}`}
+                  >
+                    <Ban size={15} />
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setConfirmAction({ type: 'delete', row: r })}
+                disabled={rowBusy}
+                className="rounded-lg p-1.5 text-rose-500 transition hover:bg-rose-50 disabled:opacity-50 dark:hover:bg-rose-950/40"
+                title={r.revoked ? 'Delete permanently' : 'Revoke first — deletion is permanent and removes usage stats'}
+                aria-label={`Delete key ${r.name}`}
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
           ) },
         ]}
       />
@@ -143,7 +233,7 @@ export default function Keys({ embedded = false, projectId: fixedProjectId }) {
         <form onSubmit={handleSubmit(onCreate)} className="space-y-4">
           <div>
             <label htmlFor="key-name" className="label">Name</label>
-            <input id="key-name" className="input" {...register('name')} placeholder="prod-frontend" />
+            <input id="key-name" className="input" {...register('name')} placeholder="prod-frontend" autoComplete="off" />
             {errors.name && <p role="alert" className="mt-1 text-xs text-rose-500">{errors.name.message}</p>}
           </div>
           <div>
@@ -156,17 +246,17 @@ export default function Keys({ embedded = false, projectId: fixedProjectId }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Expires in (days, 0 = never)</label>
-              <input type="number" className="input" {...register('expiresInDays')} placeholder="90" />
+              <label htmlFor="key-expires" className="label">Expires in (days, 0 = never)</label>
+              <input id="key-expires" type="number" min="0" className="input" {...register('expiresInDays')} placeholder="90" />
             </div>
             <div>
-              <label className="label">Rate limit / min</label>
-              <input type="number" className="input" {...register('rateLimit')} placeholder="1000" />
+              <label htmlFor="key-rate" className="label">Rate limit / min</label>
+              <input id="key-rate" type="number" min="1" className="input" {...register('rateLimit')} placeholder="1000" />
             </div>
           </div>
           <div>
-            <label className="label">Scopes (comma-separated, blank = all — e.g. GET /hello, POST /orders or *)</label>
-            <input className="input font-mono" {...register('scopes')} placeholder="GET /hello, POST /orders" />
+            <label htmlFor="key-scopes" className="label">Scopes (comma-separated, blank = all — e.g. GET /hello, POST /orders or *)</label>
+            <input id="key-scopes" className="input font-mono" {...register('scopes')} placeholder="GET /hello, POST /orders" autoComplete="off" spellCheck={false} />
             {errors.scopes && <p className="mt-1 text-xs text-rose-500">{errors.scopes.message}</p>}
           </div>
           <div className="flex justify-end gap-2">
@@ -176,6 +266,20 @@ export default function Keys({ embedded = false, projectId: fixedProjectId }) {
         </form>
       </Modal>
       <ApiKeyModal open={!!rawKey} onClose={() => setRawKey(null)} apiKey={rawKey?.value} name={rawKey?.name} />
+      <ConfirmDialog
+        open={!!confirmAction}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={onConfirmAction}
+        busy={rowBusy}
+        tone={confirmAction?.type === 'delete' ? 'danger' : 'brand'}
+        title={confirmAction?.type === 'delete' ? 'Delete key permanently?' : 'Revoke key?'}
+        confirmLabel={confirmAction?.type === 'delete' ? 'Delete forever' : 'Revoke key'}
+        message={
+          confirmAction?.type === 'delete'
+            ? `This permanently deletes "${confirmAction?.row?.name}" and its usage stats. This cannot be undone.`
+            : `"${confirmAction?.row?.name}" will stop working immediately. You can still rotate or delete it later.`
+        }
+      />
     </div>
   );
 }

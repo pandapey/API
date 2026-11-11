@@ -4,6 +4,7 @@ import { adminService } from '../services/adminService.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { extractError } from '../services/api.js';
 import StatCard from '../components/StatCard.jsx';
+import PageHeader from '../components/PageHeader.jsx';
 import { SkeletonCard } from '../components/Skeleton.jsx';
 import { ErrorState } from '../components/EmptyState.jsx';
 
@@ -41,10 +42,7 @@ export default function AdminOverview() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Admin overview</h1>
-        <p className="text-sm text-slate-500">Platform-wide health at a glance.</p>
-      </div>
+      <PageHeader icon={Activity} title="Admin overview" subtitle="Platform-wide health at a glance." />
       {error && <ErrorState message={error} onRetry={load} />}
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <SkeletonCard key={i} />)}</div>

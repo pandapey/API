@@ -5,7 +5,11 @@ const ThemeContext = createContext(null);
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
     try {
-      return localStorage.getItem('devapi-theme') || 'light';
+      const stored = localStorage.getItem('devapi-theme');
+      if (stored === 'dark' || stored === 'light') return stored;
+      // Match the inline script in index.html: fall back to the OS preference
+      // so first-time visitors don't get a dark->light flash.
+      return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     } catch {
       return 'light';
     }

@@ -8,7 +8,7 @@ export default function PageTransition({ children }) {
 
   useEffect(() => {
     try {
-      window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     } catch {
       window.scrollTo(0, 0);
     }

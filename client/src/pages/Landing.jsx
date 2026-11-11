@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, BarChart3, Check, FlaskConical, KeyRound, LogOut, ShieldCheck, Webhook, Zap } from 'lucide-react';
+import { ArrowRight, BarChart3, Check, FlaskConical, KeyRound, LogOut, PlayCircle, ShieldCheck, Webhook, Zap } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import useReveal from '../hooks/useReveal.js';
 
@@ -81,15 +81,18 @@ export default function Landing() {
             <FlaskConical size={15} /> No signup? Sign in with the public demo account →
           </button>
         )}
+        <Link to="/demo" className="fade-up mx-auto mt-1.5 inline-flex items-center gap-2 text-sm text-brand-200/90 transition hover:text-brand-100 hover:underline" style={{ '--reveal-delay': '360ms' }}>
+          <PlayCircle size={15} /> Or try the one-click live demo console →
+        </Link>
         <div className="reveal mx-auto mt-10 max-w-4xl overflow-hidden rounded-2xl border border-white/10 bg-slate-900/80 shadow-2xl backdrop-blur">
           <div className="flex items-center gap-1.5 border-b border-white/10 px-4 py-2.5">
             <span className="h-2.5 w-2.5 rounded-full bg-rose-500" /><span className="h-2.5 w-2.5 rounded-full bg-amber-400" /><span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
             <span className="ml-2 font-mono text-xs text-slate-400">curl — gateway request</span>
           </div>
           <pre className="overflow-x-auto p-5 text-left font-mono text-[13px] leading-relaxed text-slate-300">
-{`curl https://api.devapihub.dev/gateway/weather/current \\
+{`curl https://api.devapihub.dev/gateway/demo-weather-api/current \\
   -H "x-api-key: dk_live_9f2..." \\
-  -H "Content-Type: application/json"\n\n# → 200 OK · 42ms · rate-limit 998/1000 remaining`}
+  -H "Content-Type: application/json"\n\n# → 200 OK · 42ms · rate-limit 119/120 remaining`}
           </pre>
         </div>
       </section>

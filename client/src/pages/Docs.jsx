@@ -45,22 +45,27 @@ export default function Docs({ embedded = false, projectId: fixedProjectId, proj
   }, [projects, fixedProjectId]);
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId) return undefined;
+    let cancelled = false;
+    const pid = projectId;
     (async () => {
       setLoading(true);
       try {
-        const res = await projectService.listEndpoints(projectId);
+        const res = await projectService.listEndpoints(pid);
+        if (cancelled) return;
         const list = arr(res);
         setEndpoints(list);
         if (list.length && !tryState.endpoint) {
           setTryState((s) => ({ ...s, endpoint: list[0].path, method: list[0].method || 'GET' }));
         }
       } catch {
+        if (cancelled) return;
         setEndpoints([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -120,7 +125,7 @@ export default function Docs({ embedded = false, projectId: fixedProjectId, proj
         </div>
         <div className="flex items-center gap-2">
           {!embedded && (
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="input !w-auto">
+            <select aria-label="Select project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="input !w-auto">
               {projects.map((p) => <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>)}
             </select>
           )}
@@ -178,14 +183,14 @@ export default function Docs({ embedded = false, projectId: fixedProjectId, proj
           <h3 className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white"><Zap size={16} /> Try it live</h3>
           <div className="mt-4 space-y-3">
             <div className="grid grid-cols-4 gap-2">
-              <select value={tryState.method} onChange={(e) => setTryState((s) => ({ ...s, method: e.target.value }))} className="input font-mono">
+              <select aria-label="HTTP method" value={tryState.method} onChange={(e) => setTryState((s) => ({ ...s, method: e.target.value }))} className="input font-mono">
                 {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => <option key={m}>{m}</option>)}
               </select>
-              <input value={tryState.endpoint} onChange={(e) => setTryState((s) => ({ ...s, endpoint: e.target.value }))} placeholder="/v1/…" className="input col-span-3 font-mono" />
+              <input aria-label="Endpoint path" value={tryState.endpoint} onChange={(e) => setTryState((s) => ({ ...s, endpoint: e.target.value }))} placeholder="/v1/…" className="input col-span-3 font-mono" autoComplete="off" spellCheck={false} />
             </div>
             <div>
-              <label className="label">API key</label>
-              <input value={tryState.apiKey} onChange={(e) => setTryState((s) => ({ ...s, apiKey: e.target.value }))} placeholder="dv_live_…" className="input font-mono" />
+              <label htmlFor="try-key" className="label">API key</label>
+              <input id="try-key" value={tryState.apiKey} onChange={(e) => setTryState((s) => ({ ...s, apiKey: e.target.value }))} placeholder="dv_live_…" className="input font-mono" autoComplete="off" spellCheck={false} />
             </div>
             <div>
               <label htmlFor="try-params" className="label">Query params (JSON)</label>

@@ -1,5 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authService } from '../services/authService.js';
+// Project list cache is per-user; switching accounts must not leak another
+// user's project list into Endpoints/Keys/Webhooks/Docs/Analytics filters.
+import { invalidateProjectsCache } from '../hooks/useProjects.js';
 
 const AuthContext = createContext(null);
 
@@ -82,6 +85,7 @@ export function AuthProvider({ children }) {
     }
     const u = { ...raw, id: raw.id || raw._id, role: raw.role === 'user' ? 'developer' : raw.role };
     persist(u, token);
+    invalidateProjectsCache();
     return { user: u, token };
   }, []);
 
@@ -94,6 +98,7 @@ export function AuthProvider({ children }) {
     }
     const u = { ...raw, id: raw.id || raw._id, role: raw.role === 'user' ? 'developer' : raw.role };
     persist(u, token);
+    invalidateProjectsCache();
     return { user: u, token };
   }, []);
 
@@ -106,6 +111,7 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('devapi_user');
     } catch (e) { console.error('[Auth logout cleanup failed]', e); }
     setUser(null);
+    invalidateProjectsCache();
   }, []);
 
   const value = useMemo(
@@ -120,11 +126,6 @@ export function AuthProvider({ children }) {
       logout,
       fetchMe,
       setUser: (next) => {
-        // Accept either a user object (Profile-style merge) or persist(user, token).
-        if (next && typeof next === 'object' && !Array.isArray(next) && next.email && !next.token) {
-          persist(next);
-          return;
-        }
         persist(next);
       },
       persist,

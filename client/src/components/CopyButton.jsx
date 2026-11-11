@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 
 export default function CopyButton({ text, label = 'Copy' }) {
   const [done, setDone] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
   const copy = async () => {
     try {
       const value = text ?? '';
@@ -17,7 +21,8 @@ export default function CopyButton({ text, label = 'Copy' }) {
         ta.remove();
       }
       setDone(true);
-      setTimeout(() => setDone(false), 1600);
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setDone(false), 1600);
     } catch {}
   };
   return (

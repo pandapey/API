@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Activity,
@@ -51,6 +52,15 @@ export default function Sidebar({ mobileOpen, onClose }) {
   const { isAdmin, logout } = useAuth();
   const navigate = useNavigate();
 
+  // Close the mobile drawer with Escape (window listener — the backdrop is
+  // never focused, so an onKeyDown there was dead code).
+  useEffect(() => {
+    if (!mobileOpen) return undefined;
+    const onKey = (e) => e.key === 'Escape' && onClose?.();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileOpen, onClose]);
+
   const doLogout = async () => {
     await logout();
     navigate('/login');
@@ -61,10 +71,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
         <div
           className="fixed inset-0 z-30 bg-slate-950/50 backdrop-blur-sm lg:hidden"
           onClick={onClose}
-          onKeyDown={(e) => e.key === 'Escape' && onClose?.()}
-          role="button"
-          tabIndex={0}
-          aria-label="Close menu"
+          aria-hidden="true"
         />
       )}
       <aside

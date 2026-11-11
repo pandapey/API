@@ -3,9 +3,10 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
 
-// Never-hide debug buffer: bypasses DevTools "N hidden" filter.
-// Type window.__devapi_logs in Console input to see everything even if filtered.
-if (!window.__devapi_logs) {
+// Dev-only debug buffer: captures console.error/warn into window.__devapi_logs
+// so transient errors survive DevTools "N hidden" filtering. Never ships to
+// production bundles.
+if (import.meta.env.DEV && !window.__devapi_logs) {
   window.__devapi_logs = [];
   const push = (type, args) => {
     try {

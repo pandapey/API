@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Download, RefreshCw } from 'lucide-react';
 import { useLogs } from '../hooks/useLogs.js';
 import { useProjects } from '../hooks/useProjects.js';
+import { useSocket } from '../hooks/useSocket.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { extractError } from '../services/api.js';
 import { logService } from '../services/logService.js';
@@ -24,6 +25,18 @@ export default function Logs() {
     to: sp.get('to') || '',
     page: Number(sp.get('page')) || 1,
   });
+
+  // Live updates for the selected project's room. With "All projects" no room
+  // is joined (scoped-by-design on the server) and the page stays manual.
+  const { connected, lastEvent } = useSocket(['request:logged'], { projectId: filters.projectId });
+  const lastLiveFetchRef = useRef(0);
+  useEffect(() => {
+    if (!lastEvent) return;
+    const now = Date.now();
+    if (now - lastLiveFetchRef.current < 2000) return; // throttle to 1 refresh / 2s
+    lastLiveFetchRef.current = now;
+    refetch();
+  }, [lastEvent, refetch]);
 
   useEffect(() => {
     const next = {};
@@ -56,7 +69,14 @@ export default function Logs() {
       <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
         <div>
           <h1 className="page-title">Request logs</h1>
-          <p className="page-subtitle">{error || 'Filter every gateway call.'}</p>
+          <p className="page-subtitle flex items-center gap-2">
+            Every gateway call — filter, inspect and export.
+            {connected && filters.projectId && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400" title="Auto-refreshing as new requests land">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 motion-safe:animate-pulse" aria-hidden="true" /> Live
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex gap-2">
           <button onClick={onExport} disabled={exporting} className="btn-secondary !py-1.5 !text-xs" aria-busy={exporting}>
@@ -68,17 +88,17 @@ export default function Logs() {
       {error && <ErrorState message={error} onRetry={() => refetch()} />}
 
       <div className="card grid gap-3 p-4 md:grid-cols-6">
-        <select value={filters.projectId} onChange={(e) => set('projectId', e.target.value)} className="input">
+        <select aria-label="Filter by project" value={filters.projectId} onChange={(e) => set('projectId', e.target.value)} className="input">
           <option value="">All projects</option>
           {projects.map((p) => <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>)}
         </select>
-        <select value={filters.status} onChange={(e) => set('status', e.target.value)} className="input">
+        <select aria-label="Filter by status" value={filters.status} onChange={(e) => set('status', e.target.value)} className="input">
           <option value="">Any status</option>
           <option value="2xx">2xx success</option>
           <option value="4xx">4xx client error</option>
           <option value="5xx">5xx server error</option>
         </select>
-        <input value={filters.endpoint} onChange={(e) => set('endpoint', e.target.value)} placeholder="/path filter" className="input font-mono" />
+        <input aria-label="Filter by endpoint path" value={filters.endpoint} onChange={(e) => set('endpoint', e.target.value)} placeholder="/path filter" className="input font-mono" autoComplete="off" spellCheck={false} />
         <input type="date" value={filters.from} onChange={(e) => set('from', e.target.value)} className="input" aria-label="From date" />
         <input type="date" value={filters.to} onChange={(e) => set('to', e.target.value)} className="input" aria-label="To date" />
         <button onClick={() => setFilters((f) => ({ ...f, status: '', endpoint: '', from: '', to: '', projectId: '', page: 1 }))} className="btn-secondary !py-2 !text-xs">Clear filters</button>

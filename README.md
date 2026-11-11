@@ -169,14 +169,16 @@ Auth: `Authorization: Bearer <accessToken>` (+ refresh cookie auto-handled). Gat
 
 ## Database schema overview
 
-- `User {name,email(unique),passwordHash,role,suspended,emailVerified}` 
-- `ApiProject {owner, name, slug, description, baseUrl, logoUrl, published}`
-- `ApiVersion {project, version, status: active|deprecated}`
-- `ApiEndpoint {project, version, method, path, description, authRequired, params, bodySchema, responseSchema, exampleRequest/Response, statusCodes}` index `(project, method, path)`
-- `ApiKey {project, owner, name, keyHash(unique), prefix, last4, scopes, expiresAt, revoked, lastUsedAt, rateLimit}` index `keyHash`
-- `ApiRequestLog {project, apiKey, endpoint, method, path, statusCode, responseTimeMs, ip, userAgent, timestamp}` TTL/index `(project, timestamp)`
-- `Webhook {project, url, events[], secret, active}` + `WebhookDelivery {webhook, event, payload, statusCode, success, attempts, nextRetry}`
-- `UsageRecord {project, key, hour, count, errors, avgLatency}` + `RefreshToken {user, tokenHash, expiresAt, revoked}` + `Notification` + `SystemSetting {key(unique), value}`
+- `User {name, email(unique, lowercase), passwordHash, role: user|developer|admin, isVerified, verificationToken, resetToken, resetExpires, suspended}`
+- `ApiProject {owner, name, slug(unique-ish), description, status: draft|published|archived, basePath, upstreamUrl, rateLimitPerMin=120}`
+- `ApiVersion {project, version, status: active|deprecated, description, isDefault}`
+- `ApiEndpoint {project, versionId, version, method, path, description, authRequired=true, rateLimitPerMin, exampleResponse, latencyMs, isActive}` index `(project, method, path)`
+- `ApiKey {project, owner, name, keyHash(unique, indexed), prefix, last4, scopes[], revoked, revokedAt, expiresAt, rateLimitPerMin=60, lastUsedAt, usageCount}` — hash never leaves the server
+- `ApiRequestLog {project, apiKey, keyPrefix, endpoint, method, path, statusCode, responseTimeMs, ip, userAgent, errorMessage, timestamp}` indexes on `project/statusCode/method/timestamp`
+- `Webhook {project, owner, url, events[], secret, isActive, headers}` + `WebhookDelivery {webhook, project, event, payload, status: pending|success|failed, attempts, responseStatus, error, nextRetryAt}`
+- `UsageRecord {project, periodStart, periodEnd, totalRequests, successCount, errorCount, avgLatencyMs}` + `RefreshToken {user, tokenHash(unique), jti, expiresAt, revoked}` + `Notification {user, email, type, subject, body, read}` + `SystemSetting {key(unique), value, updatedBy}`
+
+Enforced admin settings (`SystemSetting`, 15s-cached): `maintenanceMode` (gateway 503s), `globalRateMax` (platform rate ceiling), `defaultProjectRateLimit`, `logRetentionDays` (daily cleanup), `allowRegistration` (signup kill-switch).
 
 ## Deployment
 

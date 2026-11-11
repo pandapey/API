@@ -9,7 +9,8 @@ export default function StatCard({ label, value, delta, deltaLabel, icon: Icon, 
     amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
     slate: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
   };
-  const up = typeof delta === 'number' ? delta >= 0 : undefined;
+  // 0% is neutral — don't show it as a green "improvement".
+  const up = typeof delta === 'number' ? (delta > 0 ? true : delta < 0 ? false : undefined) : undefined;
   return (
     <div className="card card-hover p-5 transition">
       <div className="flex items-center justify-between">

@@ -1,20 +1,22 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Send, Trash2, Undo2 } from 'lucide-react';
 import { projectService } from '../services/projectService.js';
 import { keyService } from '../services/keyService.js';
 import { logService } from '../services/logService.js';
 import { webhookService } from '../services/webhookService.js';
 import { analyticsService } from '../services/analyticsService.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { invalidateProjectsCache } from '../hooks/useProjects.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { extractError } from '../services/api.js';
 import Table from '../components/Table.jsx';
 import EmptyState, { ErrorState } from '../components/EmptyState.jsx';
 import Skeleton from '../components/Skeleton.jsx';
-import Badge, { MethodBadge, StatusBadge } from '../components/Badge.jsx';
 import CopyButton from '../components/CopyButton.jsx';
-import { formatDate, formatMs } from '../utils/format.js';
+import ConfirmDialog from '../components/ConfirmDialog.jsx';
+import Badge, { MethodBadge, StatusBadge, ProjectStatusBadge } from '../components/Badge.jsx';
+import { formatDate, formatMs, formatNumber, formatPercent } from '../utils/format.js';
 import Endpoints from './Endpoints.jsx';
 import Keys from './Keys.jsx';
 import Webhooks from './Webhooks.jsx';
@@ -39,6 +41,24 @@ export default function ProjectDetail() {
   const [newVersionNotes, setNewVersionNotes] = useState('');
   const [copyFrom, setCopyFrom] = useState('');
   const [creatingVersion, setCreatingVersion] = useState(false);
+  const [confirmDeleteVersion, setConfirmDeleteVersion] = useState(null);
+  const [statusBusy, setStatusBusy] = useState(false);
+
+  const onTogglePublish = async () => {
+    const isPublished = String(project?.status).toLowerCase() === 'published';
+    setStatusBusy(true);
+    try {
+      await (isPublished ? projectService.unpublish(id) : projectService.publish(id));
+      toast.success(isPublished ? 'Project back to draft — gateway now 404s' : 'Project published — live on the gateway');
+      const p = await projectService.get(id);
+      setProject(p?.project ?? p?.data ?? p);
+      invalidateProjectsCache();
+    } catch (e) {
+      toast.error(extractError(e, 'Update failed'));
+    } finally {
+      setStatusBusy(false);
+    }
+  };
 
   const reloadVersions = async () => {
     try {
@@ -68,12 +88,14 @@ export default function ProjectDetail() {
     }
   };
 
-  const onDeleteVersion = async (row) => {
+  const onDeleteVersion = async () => {
+    const row = confirmDeleteVersion;
+    if (!row) return;
     const vid = row._id || row.id;
-    if (!confirm(`Delete version "${row.version}"?`)) return;
     try {
       await projectService.deleteVersion(id, vid);
       toast.success('Version deleted');
+      setConfirmDeleteVersion(null);
       await reloadVersions();
     } catch (err) {
       toast.error(extractError(err, 'Delete failed'));
@@ -159,11 +181,22 @@ export default function ProjectDetail() {
       </Link>
       <div className="card flex flex-col justify-between gap-3 p-5 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">{project.name}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white">{project.name}</h1>
+            <ProjectStatusBadge status={project.status} />
+          </div>
           <p className="text-sm text-slate-500">{project.description || 'No description'}</p>
-          <p className="mt-1 font-mono text-xs text-slate-400">{project.basePath || '/'} · {project.upstreamUrl || 'no upstream set'}</p>
+          <p className="mt-1 font-mono text-xs text-slate-400">{project.basePath || '/'} · {project.upstreamUrl || 'no upstream set'}{project.slug ? <> · /{project.slug}</> : null}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={onTogglePublish}
+            disabled={statusBusy}
+            className={String(project.status).toLowerCase() === 'published' ? 'btn-secondary !py-2 !text-xs' : 'btn-primary !py-2 !text-xs'}
+            title={String(project.status).toLowerCase() === 'published' ? 'Unpublish — gateway returns 404 until re-published' : 'Publish — serve this project through the gateway'}
+          >
+            {String(project.status).toLowerCase() === 'published' ? <><Undo2 size={14} /> Unpublish</> : <><Send size={14} /> Publish</>}
+          </button>
           <Badge tone="blue">{versions.length} versions</Badge>
           <Badge tone="green">{keys.length} keys</Badge>
           <Badge tone="purple">{webhooks.length} webhooks</Badge>
@@ -188,7 +221,36 @@ export default function ProjectDetail() {
           <div className="card p-5">
             <h3 className="font-semibold text-slate-900 dark:text-white">Stats (30d)</h3>
             {stats ? (
-              <pre className="mt-3 overflow-x-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-200">{JSON.stringify(stats, null, 2)}</pre>
+              <>
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {[
+                    { label: 'Requests', value: formatNumber(stats.total) },
+                    { label: 'Success rate', value: stats.errorRate != null ? formatPercent((100 - Number(stats.errorRate)) / 100) : '—' },
+                    { label: 'Errors', value: formatNumber(stats.errors) },
+                    { label: 'Avg latency', value: formatMs(stats.avgLatencyMs) },
+                    { label: 'p95 latency', value: formatMs(stats.p95LatencyMs) },
+                    { label: 'Active keys', value: formatNumber(stats.activeKeys ?? stats.keys) },
+                  ].map((s) => (
+                    <div key={s.label} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-900/60">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{s.label}</p>
+                      <p className="mt-1 text-lg font-bold tabular-nums text-slate-900 dark:text-white">{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+                {Array.isArray(stats.byEndpoint) && stats.byEndpoint.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Top endpoints</p>
+                    <ul className="mt-2 space-y-1.5">
+                      {stats.byEndpoint.slice(0, 5).map((e) => (
+                        <li key={e.endpoint} className="flex items-center justify-between gap-3 text-xs">
+                          <code className="truncate font-mono text-slate-600 dark:text-slate-300">{e.endpoint || '—'}</code>
+                          <span className="shrink-0 tabular-nums text-slate-500">{formatNumber(e.count)} calls · {formatMs(e.avgLatencyMs)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
             ) : (
               <p className="mt-2 text-sm text-slate-500">No analytics yet for this project.</p>
             )}
@@ -251,9 +313,14 @@ export default function ProjectDetail() {
                 { key: 'version', title: 'Version', render: (r) => <Badge>{r.version || r.name || r._id}</Badge> },
                 { key: 'createdAt', title: 'Created', render: (r) => formatDate(r.createdAt) },
                 { key: 'notes', title: 'Notes', render: (r) => <span className="text-xs text-slate-500">{r.notes || r.description || '—'}</span> },
-                { key: 'actions', title: '', render: (r) => (
-                  <button onClick={() => onDeleteVersion(r)} className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40" title="Delete version">
-                    Delete
+                { key: 'actions', title: 'Actions', render: (r) => (
+                  <button
+                    onClick={() => setConfirmDeleteVersion(r)}
+                    className="rounded-lg p-1.5 text-rose-500 transition hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                    title={`Delete version ${r.version || r.name}`}
+                    aria-label={`Delete version ${r.version || r.name}`}
+                  >
+                    <Trash2 size={15} />
                   </button>
                 ) },
               ]}
@@ -288,6 +355,15 @@ export default function ProjectDetail() {
           <Link to={`/analytics?projectId=${pid}`} className="btn-secondary mt-3">Open Analytics</Link>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDeleteVersion}
+        onClose={() => setConfirmDeleteVersion(null)}
+        onConfirm={onDeleteVersion}
+        title="Delete version?"
+        confirmLabel="Delete version"
+        message={confirmDeleteVersion ? `Permanently deletes version "${confirmDeleteVersion.version || confirmDeleteVersion.name}" and its endpoints. This cannot be undone.` : ''}
+      />
     </div>
   );
 }

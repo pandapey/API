@@ -38,7 +38,3 @@ export function truncate(s, len = 48) {
   const str = String(s);
   return str.length > len ? `${str.slice(0, len)}…` : str;
 }
-
-export function classNames(...xs) {
-  return xs.filter(Boolean).join(' ');
-}

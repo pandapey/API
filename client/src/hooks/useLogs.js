@@ -43,7 +43,7 @@ export function useLogs(initial = {}) {
     }
   }, [filters]);
 
-  // Debounce free-text endpoint filter (300ms) to avoid request storm + races.
+  // Debounce free-text endpoint filter (300ms) to avoid request storms.
   const [debouncedEndpoint, setDebouncedEndpoint] = useState(filters.endpoint);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedEndpoint(filters.endpoint), 300);
@@ -51,9 +51,35 @@ export function useLogs(initial = {}) {
   }, [filters.endpoint]);
 
   useEffect(() => {
-    fetchLogs({ endpoint: debouncedEndpoint });
+    let cancelled = false;
+    const run = async () => {
+      const f = { ...filters, endpoint: debouncedEndpoint };
+      Object.keys(f).forEach((k) => (f[k] === '' || f[k] === undefined) && delete f[k]);
+      setLoading(true);
+      setError('');
+      try {
+        const res = await logService.list(f);
+        if (cancelled) return; // stale response (deps changed/unmounted) — discard
+        const n = normalize(res);
+        setItems(n.items);
+        setMeta(n.meta);
+      } catch (e) {
+        if (cancelled || e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError') return;
+        console.error('[useLogs failed]', e?.response?.data || e.message);
+        setError(extractError(e, 'Failed to load logs'));
+        setItems([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.page, filters.limit, filters.projectId, filters.status, debouncedEndpoint, filters.from, filters.to]);
 
   return { logs: items, meta, loading, error, filters, setFilters, refetch: fetchLogs };
 }
+
+export default useLogs;

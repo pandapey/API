@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { useSocket } from '../hooks/useSocket.js';
 
-export default function Topbar({ onMenu }) {
+export default function Topbar({ onMenu, mobileOpen = false }) {
   const { user, logout } = useAuth();
   const { isDark, toggle } = useTheme();
   const [open, setOpen] = useState(false);
@@ -27,7 +27,12 @@ export default function Topbar({ onMenu }) {
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
       <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
-        <button onClick={onMenu} className="btn-ghost !p-2 lg:hidden" aria-label="Open menu" aria-expanded="false">
+        <button
+          onClick={onMenu}
+          className="btn-ghost !p-2 lg:hidden"
+          aria-label="Open menu"
+          aria-expanded={mobileOpen}
+        >
           <Menu size={20} />
         </button>
         <div className="ml-auto flex items-center gap-1.5">
@@ -35,7 +40,7 @@ export default function Topbar({ onMenu }) {
             title={connected ? 'Realtime connected' : 'Realtime offline — data refreshes on navigation'}
             className={`mr-1 hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold sm:flex ${connected ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-slate-300 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'}`}
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${connected ? 'animate-pulse bg-emerald-500' : 'bg-slate-400'}`} /> {connected ? 'Live' : 'Offline'}
+            <span className={`h-1.5 w-1.5 rounded-full ${connected ? 'animate-pulse bg-emerald-500' : 'bg-slate-400'}`} /> {connected ? 'Connected' : 'Offline'}
           </span>
           <button onClick={toggle} className="btn-ghost !p-2 transition active:scale-90" aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'} title="Toggle theme">
             {isDark ? <Sun size={19} /> : <Moon size={19} />}

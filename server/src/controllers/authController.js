@@ -8,6 +8,7 @@ const { sha256 } = require('../utils/apiKey');
 const { sendEmail } = require('../utils/email');
 const { asyncHandler, ApiError } = require('../utils/asyncHandler');
 const env = require('../config/env');
+const { getSetting } = require('../services/systemSettings');
 
 function setRefreshCookie(res, token) {
   res.cookie('refreshToken', token, {
@@ -24,6 +25,12 @@ function refreshExpiry() {
 }
 
 const register = asyncHandler(async (req, res) => {
+  // Admin kill-switch: allowRegistration=false blocks self-signup.
+  // (Admin-created users and the demo seed are unaffected.)
+  const allow = await getSetting('allowRegistration', true);
+  if (allow === false || allow === 'false') {
+    throw new ApiError(403, 'Registration is currently disabled', 'REGISTRATION_DISABLED');
+  }
   const { name, email, password } = req.body;
   const existing = await User.findOne({ email: email.toLowerCase() });
   if (existing) throw new ApiError(409, 'Email already registered', 'EMAIL_EXISTS');

@@ -27,11 +27,15 @@ export function useSocket(topics = [], options = {}) {
         socketRef.current = socket;
         const joinRooms = () => {
           try {
-            const pid = options?.projectId;
             const freshToken = (() => { try { return localStorage.getItem('devapi_token'); } catch { return null; } })();
-            if (pid && /^[a-fA-F0-9]{24}$/.test(String(pid)) && freshToken) {
-              socket.emit('join', { project: String(pid), token: freshToken });
-            }
+            if (!freshToken) return;
+            // Single project room…
+            const ids = new Set(options?.projectId ? [options.projectId] : []);
+            // …or a set of owned project rooms (e.g. Dashboard-wide live stats).
+            if (Array.isArray(options?.projects)) options.projects.forEach((p) => p && ids.add(String(p)));
+            ids.forEach((pid) => {
+              if (/^[a-fA-F0-9]{24}$/.test(pid)) socket.emit('join', { project: pid, token: freshToken });
+            });
           } catch {}
         };
         socket.on('connect', () => {
@@ -51,7 +55,7 @@ export function useSocket(topics = [], options = {}) {
       } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(topics), options?.projectId]);
+  }, [JSON.stringify(topics), options?.projectId, JSON.stringify(options?.projects || [])]);
 
   return { connected, lastEvent };
 }

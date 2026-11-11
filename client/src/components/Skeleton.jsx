@@ -25,3 +25,20 @@ export function SkeletonTable({ rows = 4 }) {
     </div>
   );
 }
+
+/**
+ * Lazy-page fallback used by the router-level Suspense boundaries.
+ * Lives here so routes/index.jsx and Layout can share one implementation
+ * without a circular import.
+ */
+export function RouteFallback() {
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-10" aria-busy="true" aria-label="Loading page">
+      <div className="space-y-3">
+        <Skeleton className="h-8 w-1/3" />
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    </div>
+  );
+}

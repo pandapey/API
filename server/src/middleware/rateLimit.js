@@ -2,6 +2,7 @@ const rateLimit = require('express-rate-limit');
 const env = require('../config/env');
 const { incrWithTTL } = require('../config/redis');
 const logger = require('../config/logger');
+const { getSetting } = require('../services/systemSettings');
 
 const globalLimiter = rateLimit({
   windowMs: env.globalRateWindowMs,
@@ -69,7 +70,13 @@ async function perKeyRateLimit(req, res, next) {
 async function perProjectRateLimit(req, res, next) {
   try {
     const project = req.apiProject || req.gatewayProject;
-    const max = (project && project.rateLimitPerMin) || 300;
+    // Effective limit precedence: project's own limit → defaultProjectRateLimit
+    // setting (admin tunable) → 300. globalRateMax is a platform ceiling:
+    // when > 0, no project can exceed it, even with an explicit higher limit.
+    let max = Number((project && project.rateLimitPerMin) || 0);
+    if (!max) max = Number(await getSetting('defaultProjectRateLimit', 300)) || 300;
+    const ceiling = Number(await getSetting('globalRateMax', 0));
+    if (ceiling > 0) max = Math.min(max, ceiling);
     const pid = (project && project._id ? project._id.toString() : req.params.projectId) || 'unknown';
     const windowSec = 60;
     const count = await incrWithTTL(`rl:proj:${pid}`, windowSec);
@@ -108,9 +115,29 @@ async function loadGatewayProject(req, res, next) {
   return next();
 }
 
+/**
+ * Maintenance gate: when admins flip `maintenanceMode`, gateway traffic
+ * (proxy + mock) answers 503 while the management API stays up so the
+ * setting can be turned back off.
+ */
+async function maintenanceGate(req, res, next) {
+  try {
+    const on = await getSetting('maintenanceMode', false);
+    if (on === true || on === 'true') {
+      return res.status(503).json({
+        success: false,
+        message: 'Gateway is in maintenance mode. Try again shortly.',
+        errorCode: 'MAINTENANCE_MODE',
+      });
+    }
+  } catch (_) { /* never fail-open into a 500 — default is off anyway */ }
+  next();
+}
+
 module.exports = {
   globalLimiter,
   perKeyRateLimit,
   perProjectRateLimit,
   loadGatewayProject,
+  maintenanceGate,
 };

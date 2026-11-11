@@ -42,7 +42,17 @@ export default function Analytics() {
     name: (e.path || e.name || e.endpoint || `ep-${i}`).slice(0, 28),
     value: e.requests ?? e.count ?? 0,
   }));
-  const st = (status || []).map((s, i) => ({ name: s.name || s.label || s.status || `s${i}`, value: s.value ?? s.count ?? 0 }));
+  const st = (status || []).map((s, i) => {
+    const code = parseInt(s.name || s.label || s.status, 10);
+    const tone = Number.isFinite(code) ? (code >= 500 ? '#ef4444' : code >= 400 ? '#f59e0b' : code >= 200 && code < 300 ? '#22c55e' : '#6366f1') : COLORS[i % COLORS.length];
+    return { name: String(s.name ?? s.status ?? `s${i}`), value: s.value ?? s.count ?? 0, tone };
+  });
+
+  const statusTone = (name) => {
+    const code = parseInt(name, 10);
+    if (Number.isFinite(code)) return code >= 500 ? '#ef4444' : code >= 400 ? '#f59e0b' : code >= 200 && code < 300 ? '#22c55e' : '#6366f1';
+    return '#6366f1';
+  };
 
   return (
     <div className="space-y-5">
@@ -85,7 +95,7 @@ export default function Analytics() {
           <ChartCard title="Per-endpoint share" subtitle="Top 10">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={ep} dataKey="value" nameKey="name" outerRadius={95} label>
+                <Pie data={ep} dataKey="value" nameKey="name" outerRadius={95} label={(p) => (String(p.name || '').length > 16 ? `${String(p.name).slice(0, 15)}…` : p.name)}>
                   {ep.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
@@ -100,18 +110,23 @@ export default function Analytics() {
                 <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="value" fill="#22c55e" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                  {st.length ? st.map((entry, i) => <Cell key={i} fill={statusTone(entry.name)} />) : <Cell fill="#6366f1" />}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
           <ChartCard title="Latency (avg ms)" subtitle="Response time trend" className="lg:col-span-2">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={(latency?.length ? latency : ts).map((l) => ({ date: l.date || formatDateShort(l.day || l.label), ms: l.latency ?? l.avgLatency ?? l.ms ?? l.avg ?? 0 }))}>
+              <LineChart data={(latency?.length ? latency : ts).map((l) => ({ date: l.date || formatDateShort(l.day || l.label), ms: l.latency ?? l.avgLatency ?? l.ms ?? l.avg ?? 0, p95: l.p95 || null }))}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                 <XAxis dataKey="date" />
                 <YAxis />
                 <Tooltip />
-                <Line type="monotone" dataKey="ms" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                {latency?.length && latency.some((l) => l.p95) ? (
+                  <Line type="monotone" dataKey="p95" name="p95" stroke="#a855f7" strokeWidth={2} dot={false} strokeDasharray="6 4" />
+                ) : null}
+                <Line type="monotone" dataKey="ms" name="avg" stroke="#f59e0b" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>

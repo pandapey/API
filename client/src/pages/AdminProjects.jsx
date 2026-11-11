@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { FolderKanban } from 'lucide-react';
 import { adminService } from '../services/adminService.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { extractError } from '../services/api.js';
 import Table from '../components/Table.jsx';
+import PageHeader from '../components/PageHeader.jsx';
+import { ProjectStatusBadge } from '../components/Badge.jsx';
 import { formatDate } from '../utils/format.js';
 
 function arr(x) {
@@ -32,18 +35,16 @@ export default function AdminProjects() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">All projects</h1>
-        <p className="text-sm text-slate-500">Every workspace project on the platform.</p>
-      </div>
+      <PageHeader icon={FolderKanban} title="All projects" subtitle="Every workspace project on the platform." />
       <Table
         loading={loading}
         data={items}
         emptyTitle="No projects"
         columns={[
           { key: 'name', title: 'Project', render: (r) => (
-            <Link to={`/projects/${r._id || r.id}`} className="font-semibold text-brand-600 hover:underline">{r.name}</Link>
+            <Link to={`/projects/${r._id || r.id}`} className="font-semibold text-brand-600 hover:underline dark:text-brand-300">{r.name}</Link>
           ) },
+          { key: 'status', title: 'Status', render: (r) => <ProjectStatusBadge status={r.status} /> },
           { key: 'owner', title: 'Owner', render: (r) => {
             const o = r.ownerEmail || r.owner;
             const label = typeof o === 'object' && o !== null ? (o.email || o.name || o._id) : (o || r.userId || '—');

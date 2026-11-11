@@ -7,10 +7,8 @@ export const logService = {
     const res = await api.get('/logs', { params });
     return unwrap(res);
   },
-  async get(id) {
-    const res = await api.get(`/logs/${id}`);
-    return unwrap(res);
-  },
+  // NOTE: there is no GET /api/logs/:id on the server (logs are list-only +
+  // CSV export), so no `get(id)` here — a dead method that would 404.
   async exportCsv(params = {}) {
     const clean = { ...params };
     Object.keys(clean).forEach((k) => (clean[k] === '' || clean[k] === undefined || clean[k] === null) && delete clean[k]);

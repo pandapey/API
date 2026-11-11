@@ -25,6 +25,14 @@ export const projectService = {
     const res = await api.delete(`/projects/${id}`);
     return unwrap(res);
   },
+  async publish(id) {
+    const res = await api.post(`/projects/${id}/publish`);
+    return unwrap(res);
+  },
+  async unpublish(id) {
+    const res = await api.post(`/projects/${id}/unpublish`);
+    return unwrap(res);
+  },
   // versions
   async listVersions(projectId) {
     const res = await api.get(`/projects/${projectId}/versions`);

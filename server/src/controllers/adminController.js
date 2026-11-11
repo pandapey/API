@@ -4,6 +4,7 @@ const ApiProject = require('../models/ApiProject');
 const ApiKey = require('../models/ApiKey');
 const ApiRequestLog = require('../models/ApiRequestLog');
 const SystemSetting = require('../models/SystemSetting');
+const { invalidateSettings } = require('../services/systemSettings');
 const Notification = require('../models/Notification');
 const { asyncHandler, ApiError } = require('../utils/asyncHandler');
 const { getPagination, buildPaginatedResponse } = require('../utils/pagination');
@@ -201,6 +202,7 @@ const putSettings = asyncHandler(async (req, res) => {
     SystemSetting.updateOne({ key }, { $set: { value, updatedBy: req.user._id } }, { upsert: true })
   );
   await Promise.all(ops);
+  invalidateSettings(); // consumers (gateway limiter, scheduler, register) re-read within 15s
   await audit(req.user, 'settings.updated', Object.keys(body).join(','));
   const items = await SystemSetting.find().lean();
   const obj = {};

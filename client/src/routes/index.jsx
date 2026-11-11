@@ -2,7 +2,7 @@ import { Suspense, lazy } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import Layout from '../components/Layout.jsx';
 import ProtectedRoute from '../components/ProtectedRoute.jsx';
-import Skeleton from '../components/Skeleton.jsx';
+import { RouteFallback } from '../components/Skeleton.jsx';
 
 const Landing = lazy(() => import('../pages/Landing.jsx'));
 const Login = lazy(() => import('../pages/Login.jsx'));
@@ -32,18 +32,6 @@ const NotFound = lazy(() => import('../pages/NotFound.jsx'));
 
 const guard = (el, roles) => <ProtectedRoute roles={roles}>{el}</ProtectedRoute>;
 const adminGuard = (el) => guard(el, ['admin']);
-
-function RouteFallback() {
-  return (
-    <div className="mx-auto max-w-7xl px-4 py-10" aria-busy="true" aria-label="Loading page">
-      <div className="space-y-3">
-        <Skeleton className="h-8 w-1/3" />
-        <Skeleton className="h-4 w-2/3" />
-        <Skeleton className="h-40 w-full" />
-      </div>
-    </div>
-  );
-}
 
 export default function AppRoutes() {
   return (

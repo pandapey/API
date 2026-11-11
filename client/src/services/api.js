@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-export const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'http://localhost:5000/gateway';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
+export const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || '/gateway';
 
 const api = axios.create({
   baseURL: API_URL,

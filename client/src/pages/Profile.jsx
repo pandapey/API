@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { authService } from '../services/authService.js';
 import { useToast } from '../context/ToastContext.jsx';
@@ -10,7 +10,6 @@ export default function Profile() {
   const toast = useToast();
   const [form, setForm] = useState({ name: user?.name || '', email: user?.email || '' });
   const [busy, setBusy] = useState(false);
-  const nameRef = useRef(null);
 
   // Sync form once async user loads (fetchMe) without clobbering edits.
   useEffect(() => {
@@ -54,7 +53,7 @@ export default function Profile() {
       <form onSubmit={save} className="card space-y-4 p-5">
         <div>
           <label htmlFor="profile-name" className="label">Display name</label>
-          <input id="profile-name" ref={nameRef} className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} autoComplete="name" />
+          <input id="profile-name" className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} autoComplete="name" />
         </div>
         <div>
           <label htmlFor="profile-email" className="label">Email (read-only)</label>

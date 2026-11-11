@@ -15,6 +15,10 @@ export const adminService = {
     const res = await api.patch(`/admin/users/${id}`, { role });
     return unwrap(res);
   },
+  async suspend(id, suspended) {
+    const res = await api.put(`/admin/users/${id}/suspend`, { suspended });
+    return unwrap(res);
+  },
   async deleteUser(id) {
     const res = await api.delete(`/admin/users/${id}`);
     return unwrap(res);

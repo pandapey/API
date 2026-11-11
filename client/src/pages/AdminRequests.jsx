@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { Activity, RefreshCw } from 'lucide-react';
 import { adminService } from '../services/adminService.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { extractError } from '../services/api.js';
 import Table from '../components/Table.jsx';
+import PageHeader from '../components/PageHeader.jsx';
 import { MethodBadge, StatusBadge } from '../components/Badge.jsx';
 import { formatDate, formatMs } from '../utils/format.js';
 
@@ -38,13 +40,12 @@ export default function AdminRequests() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Platform requests</h1>
-          <p className="text-sm text-slate-500">Cross-project gateway traffic.</p>
-        </div>
-        <button onClick={fetchAll} className="btn-secondary !py-1.5 !text-xs">Refresh</button>
-      </div>
+      <PageHeader
+        icon={Activity}
+        title="Platform requests"
+        subtitle="Cross-project gateway traffic."
+        actions={<button onClick={fetchAll} className="btn-secondary !py-1.5 !text-xs" aria-label="Refresh request list"><RefreshCw size={13} /> Refresh</button>}
+      />
       <Table
         loading={loading}
         data={items}

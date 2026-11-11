@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, AlertTriangle, CheckCircle2, Clock, Gauge, KeyRound, TrendingUp, XCircle,
 } from 'lucide-react';
@@ -7,8 +7,10 @@ import {
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { useAnalytics } from '../hooks/useAnalytics.js';
+import { useProjects } from '../hooks/useProjects.js';
+import { useSocket } from '../hooks/useSocket.js';
 import { RANGES } from '../utils/constants.js';
-import { formatDateShort, formatMs, formatNumber } from '../utils/format.js';
+import { formatDateShort, formatMs, formatNumber, formatPercent } from '../utils/format.js';
 import StatCard from '../components/StatCard.jsx';
 import { SkeletonCard } from '../components/Skeleton.jsx';
 import EmptyState, { ErrorState } from '../components/EmptyState.jsx';
@@ -46,17 +48,20 @@ function trunc(s, n = 22) {
 
 function normalizeOverview(o) {
   if (!o) return null;
+  const total = o.total ?? o.totalRequests ?? 0;
+  const failed = o.failed ?? o.failedCount ?? o.errors ?? 0;
   return {
-    total: o.total ?? o.totalRequests ?? 0,
+    total,
     today: o.today ?? o.todayRequests ?? 0,
     month: o.month ?? o.monthRequests ?? o.total ?? 0,
-    success: o.success ?? o.successCount ?? 0,
-    failed: o.failed ?? o.failedCount ?? o.errors ?? 0,
+    success: o.success ?? Math.max(0, total - failed),
+    failed,
     avgLatency: o.avgLatency ?? o.avgLatencyMs ?? o.p50 ?? 0,
+    p95: o.p95 ?? o.p95LatencyMs ?? 0,
     activeKeys: o.activeKeys ?? o.keys ?? 0,
     rateLimited: o.rateLimited ?? o.throttled ?? 0,
     mostUsed: o.mostUsed ?? o.topEndpoint ?? null,
-    successRate: o.successRate ?? (o.total ? (o.success ?? 0) / o.total : null),
+    successRate: o.successRate ?? (total > 0 ? (total - failed) / total : null),
   };
 }
 
@@ -70,6 +75,20 @@ export default function Dashboard() {
     [range, custom]
   );
   const { overview, timeseries, endpoints, status, latency, loading, error, refetch } = useAnalytics(params);
+
+  // Live updates: join every owned project's room and refetch (throttled)
+  // whenever the gateway logs a request or signals an analytics change.
+  const { projects } = useProjects();
+  const projectIds = useMemo(() => projects.map((p) => p._id || p.id), [projects]);
+  const { lastEvent } = useSocket(['request:logged', 'analytics:update'], { projects: projectIds });
+  const lastLiveFetchRef = useRef(0);
+  useEffect(() => {
+    if (!lastEvent) return;
+    const now = Date.now();
+    if (now - lastLiveFetchRef.current < 3000) return; // throttle bursts to 1 refresh / 3s
+    lastLiveFetchRef.current = now;
+    refetch();
+  }, [lastEvent, refetch]);
 
   const ov = normalizeOverview(overview);
 
@@ -151,7 +170,7 @@ export default function Dashboard() {
             <StatCard label="Rate-limited" value={ov?.rateLimited ?? 0} icon={AlertTriangle} tone="amber" />
           </div>
 
-          {(ov?.mostUsed || ov?.successRate !== null) && (
+          {(ov?.mostUsed || ov?.successRate != null) && (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="card flex items-center gap-3 p-4">
                 <span className="rounded-lg bg-brand-600/10 p-2 text-brand-600"><Gauge size={18} /></span>
@@ -164,7 +183,7 @@ export default function Dashboard() {
                 <span className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600"><CheckCircle2 size={18} /></span>
                 <div className="text-sm">
                   <p className="text-slate-500">Success rate</p>
-                  <p className="font-semibold text-slate-900 dark:text-white">{ov?.successRate != null ? `${(Number(ov.successRate) * (Number(ov.successRate) <= 1 ? 100 : 1)).toFixed(1)}%` : '—'}</p>
+                  <p className="font-semibold text-slate-900 dark:text-white">{formatPercent(ov?.successRate)}</p>
                 </div>
               </div>
             </div>
@@ -213,7 +232,7 @@ export default function Dashboard() {
                     <p className={`text-[11px] font-bold uppercase tracking-[0.18em] ${theme.headerTitle}`}>Success vs failed</p>
                     <p className={`mt-1 text-3xl font-extrabold tabular-nums tracking-tight ${theme.headerValue}`}>{formatNumber((ov?.success ?? 0) + (ov?.failed ?? 0))}</p>
                     <p className={`mt-0.5 text-xs ${theme.headerSub}`}>
-                      {ov?.successRate != null ? `${(Number(ov.successRate) * (Number(ov.successRate) <= 1 ? 100 : 1)).toFixed(1)}% success rate` : 'Outcome mix'}
+                      {ov?.successRate != null ? `${formatPercent(ov.successRate)} success rate` : 'Outcome mix'}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold text-slate-800 dark:text-white">
@@ -238,7 +257,11 @@ export default function Dashboard() {
                   <Pie data={statusData} dataKey="value" nameKey="name" innerRadius={68} outerRadius={100} paddingAngle={5} cornerRadius={10} strokeWidth={2} stroke="#fff" animationDuration={1000} animationEasing="ease-out">
                     {statusData.map((s, i) => {
                       const n = String(s.name || '').toLowerCase();
-                      const fill = n.includes('fail') || n.includes('error') || n.includes('5xx') ? 'url(#gPieErr)' : 'url(#gPieOk)';
+                      const num = parseInt(n, 10);
+                      // Real byStatus data uses HTTP codes (200/404/500...) —
+                      // 4xx/5xx are failures; labels like "Failed" too.
+                      const isErr = n.includes('fail') || n.includes('error') || n.includes('5xx') || n.includes('4xx') || (Number.isFinite(num) && num >= 400);
+                      const fill = isErr ? 'url(#gPieErr)' : 'url(#gPieOk)';
                       return <Cell key={i} fill={fill} style={{ filter: 'drop-shadow(0 6px 12px rgba(16,24,40,.25))' }} />;
                     })}
                   </Pie>
@@ -247,7 +270,7 @@ export default function Dashboard() {
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                 <div className="rounded-2xl border border-slate-200/70 bg-white/85 px-4 py-2 text-center shadow-lg backdrop-blur dark:border-white/10 dark:bg-slate-900/85">
-                  <p className="text-2xl font-extrabold tabular-nums tracking-tight text-slate-900 dark:text-white">{ov?.successRate != null ? `${(Number(ov.successRate) * (Number(ov.successRate) <= 1 ? 100 : 1)).toFixed(1)}%` : formatNumber(ov?.success ?? 0)}</p>
+                  <p className="text-2xl font-extrabold tabular-nums tracking-tight text-slate-900 dark:text-white">{ov?.successRate != null ? formatPercent(ov.successRate) : formatNumber(ov?.success ?? 0)}</p>
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">success</p>
                 </div>
               </div>
@@ -288,7 +311,7 @@ export default function Dashboard() {
                   <div>
                     <p className={`text-[11px] font-bold uppercase tracking-[0.18em] ${theme.headerTitle}`}>Latency trend</p>
                     <p className={`mt-1 text-3xl font-extrabold tabular-nums tracking-tight ${theme.headerValue}`}>{formatMs(avgLat)} <span className="text-sm font-semibold">avg</span></p>
-                    <p className={`mt-0.5 text-xs ${theme.headerSub}`}>Average response time per bucket · histogram · lower is better</p>
+                    <p className={`mt-0.5 text-xs ${theme.headerSub}`}>{ov?.p95 ? `p95 ${formatMs(ov.p95)} · ` : ''}average response time per day · lower is better</p>
                   </div>
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-[11px] font-bold text-slate-800 dark:border-white/15 dark:bg-white/10 dark:text-white"><span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ background: theme.lat }} /><span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: theme.lat }} /></span> LIVE ms</span>
                 </div>
