@@ -1,0 +1,104 @@
+DevAPI Hub — Interview Q&A (Thanglish Version)
+PART A — Basics
+
+1. API na enna?
+A: "API na rendu software pesikira contract. Inga GET /hello adicha JSON varum. Gateway la METHOD + path + version define panni, key vechu 
+yaarum call panna mudiyum."
+
+2. API management na enna?
+A: "API ya publish panni, protect panni, observe panna oru idam — auth, quota, version, docs, logs, analytics, webhooks ellame. Indha project 
+adhu dhaan: Projects/Keys/Gateway/Logs/Dashboard ellame."
+
+3. API as a service platform va eppadi use panra?
+A: "Neenga contract define panni, customer ku key + limit kudupeenga, usage ku bill panuveenga. 
+Flow: Project create → v1 → GET /hello → dk_live_ key (1000/min) → customer gateway/<id>/hello?version=v1 call → logs/usage paathu bill, 
+limit thandina 429."
+
+4. JWT na enna?
+A: "JWT na yaaru nu prove panna signed token, session vendaam. 
+Inga login panna access 15min (localStorage, Bearer) + refresh 7 days httpOnly+DB. 
+Ulla {sub, email, role} irukum. dk_live_ key vera — adhu gateway ku; JWT dashboard ku."
+
+5. Portfolio / mock backend / gateway starter / learning lab la eppadi use?
+- Portfolio: "Live Dashboard + Swagger + curl demo — full-stack theriyum nu prove."
+- Mock backend: "Upstream vendaam — exampleResponse udane return aagum. Frontend team wait panna vendaam."
+- Gateway starter: "Clone panni upstreamUrl set panna — auth/throttle/logs free ya kedaikum."
+- Learning lab: "JWT, hashing, Redis fallback, p95 pipeline, webhook HMAC — ovvoru concept um thaniya paakalaam."
+
+6. Eppadi run panna, eppadi use panna?
+npm run install:all
+Copy-Item server/.env.example server/.env
+Copy-Item client/.env.example client/.env
+npm run dev:server  # :5000/health, /api-docs
+npm run dev:client  # :5173
+"Register → New Project (My API, /v1) → Versions v1 + notes → Endpoints GET /hello → Keys Issue 
+(once copy) → gateway call → Logs/Dashboard paarunga. Admin venumna DB la role:admin maathunga."
+
+7. Docker vs MongoDB difference, edhu effective?
+A: "Rendu verum: MongoDB = database (users/projects/logs store panra idam). Docker = container 
+runner (backend+mongo+redis+frontend ellathayum pack panni enga venalum odavaikalam). Rendum use panrom: Mongo illana project eh odadhu, 
+Docker illama npm run dev la odum. So indha project ku Mongo dhaan mukkiyam. Prod la Atlas DB + Docker deploy."
+
+8. New project create panna basePath & upstream URL yen?
+A: "basePath (/v1) na route grouping + docs ku. upstreamUrl set panna gateway mode maarum: empty na mock (exampleResponse return), 
+set panna proxy (real API data proxied:true). Aprom kooda maathikalaam."
+
+9. Roles enna, purpose enna?
+A: "Rendu role: user (default developer) — thanoda project/key/logs mattum paakalaam (owner==_id check). 
+admin — ellaam paakalaam + /admin (users suspend/role/delete, ella projects/keys/requests, health, settings). 
+Register la admin aaga mudiyadhu — DB la promote pannanum."
+
+10. Indha project oda eppadi work panna?
+A: "Dashboard empty na bayapada vendaam — adhu normal. Loop: Project → Version → Endpoint → Key → gateway call → Logs la 200+latency 
+check → Dashboard/Analytics → Webhooks (optional) → Docs Try-It."
+
+11. Yen project create pannanum? Aprom enna pannanum, yen?
+A: "Project dhaan root — key, version, endpoint, logs, webhook ellame projectId mela dhaan nikum. Illana gateway ku route eh theriyadhu. 
+Aprom Version (v1 — client lock panna), aprom Endpoint (illana gateway 404), aprom Key (auth), aprom call → logs la feedback."
+
+12. Yen endpoint create pannanum? Use enna?
+A: "Endpoint na allowed route (GET /hello v1). Gateway allow-list maari: define panna method+path+version mattum 200, 
+vera edhu adicha 404 + api.error. Adhudhaan API contract — mock response, docs, mostUsed analytics, authRequired on/off ellame inga 
+irundhu dhaan varudhu."
+
+13. Webhook na enna, yen create pannanum?
+A: "Poll pannaama automatic POST varum — api.request/api.error nadandha ungal URL ku pogum. Body {event,project,data,timestamp}, 
+header X-Webhook-Signature=HMAC(secret,body). Secret na random 32+ chars (blank na auto-generate). Use: error vandha Slack alert, 
+billing sync. 3 vaati retry + delivery history iruku."
+
+14. Docs section enna purpose, eppadi use?
+A: "Docs na contract + playground: left side endpoint table + Swagger UI (/api-docs, 21 paths), right side Try-It 
+(method+endpoint+key+JSON kuduthu live gateway call + response). curl/Postman vendaam — inga test panni URL copy panni share pannalaam."
+PART B — Engineering (Thanglish)
+
+15. 1M req/day ku scale eppadi?
+A: "Backend stateless ×N, Redis shared limit, Mongo index (project,timestamp), logs 90 days TTL, byDay agg + 30s cache, BullMQ webhooks. 
+Bottleneck log writes — batch pannanum."
+
+16. Gateway secure eppadi?
+A: "Helmet, CORS allowlist, zod + sanitize, 1mb body, JWT + hash key (logs la secret illa), RBAC, prod la stack illa, httpOnly refresh, 
+expiry/revoke."
+
+17. Yen Mongo? Schema/index?
+A: "Logs heavy JSON — flexible Mixed, p95 pipeline easy. Index: email, keyHash, Endpoint(project,method,path,version), 
+Log(project,timestamp). SQL la dynamic payload kashtam."
+
+18. Test eppadi? Remove pannitiye?
+A: "Jest+supertest+memory-server: register→project→endpoint→key→gateway 200→revoke→401; 429 test. Clean ship kaaga remove pannen; 
+vendumna reinstall panni tests/ restore pannalaam."
+
+19. Deploy eppadi?
+A: "Backend Render/Fly + Atlas/Upstash, frontend Vercel (VITE_*), Compose prod-ready."
+
+20. Webhook miss aana?
+A: "3 retry (1s/3s), WebhookDelivery history, /test la replay pannalaam."
+
+21. Breaking change?
+A: "v1 ya edit panna koodadhu — v2 create panni dual-run, v1 deprecate, client ?version= maathuvanga."
+
+22. Adutha enna build pannuveenga?
+A: "Per-endpoint scopes, usage billing, audit logs. First scopes — ippo key project-level dhaan."
+Closer (2 min — ippadi sollunga)
+"Endha backend kuduthalum na oru mani nerathula product aakiduven: define, version, key, throttle, observe. 
+Idh dhaan indha project prove panra — naane live la debug panni fix pannen: key 404, refresh die, empty analytics, 
+React crash ellame evidence oda."

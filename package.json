@@ -1,0 +1,13 @@
+{
+  "name": "devapi-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DevAPI Hub - developer API management platform",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "test:server": "npm --prefix server test",
+    "test:client": "npm --prefix client test"
+  }
+}

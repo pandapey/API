@@ -1,0 +1,108 @@
+PART A — Fundamentals (your 14)
+
+1. What is API?
+A: "Application Programming Interface — a contract for software to talk. Here: HTTP GET /hello returns JSON. 
+Gateway exposes METHOD + path + version so any client (web, mobile, curl) can call it with a key."
+
+2. What is API management?
+A: "Publishing + protecting + observing APIs in one place: auth, quotas, versions, docs, logs, analytics, 
+webhooks — instead of coding each per service. This project IS that: Projects/Keys/Gateway/Rate-limit/Logs/Analytics/Webhooks/Admin."
+
+3. How do you use API as a service platform?
+A: "You define the contract (endpoints), issue customer keys with limits, they pay by usage. Flow here: create Project → v1 → 
+GET /hello → Issue dk_live_ (1000/min) → customer calls gateway/<id>/hello?version=v1 → you bill from UsageRecord/logs, cut off at 429."
+
+4. What is JWT?
+A: "Signed JSON token proving identity without sessions. Here: login gives access 15m (localStorage, Authorization: Bearer) + 
+rotating refresh 7d httpOnly+DB. Payload {sub, email, role}. protect verifies + rejects suspended; authorize('admin') checks role.
+ Keys (dk_live_) are separate — for gateway; JWT is for dashboard."
+
+5. How to show this in portfolio / mock backend / gateway starter / learning lab?
+- Portfolio: "Live Dashboard + Swagger + curl demo proves full-stack + security + DevOps."
+- Mock backend: "No upstream needed — exampleResponse returns instantly. Frontend teams build against it."
+- Gateway starter: "Clone, set upstreamUrl, get auth/throttle/logs free."
+- Learning lab: "Each concept isolated: JWT, hashing, Redis fallback, pipelines for p95, webhooks HMAC."
+
+6. How to run it and how to use it?
+A:
+npm run install:all
+Copy-Item server/.env.example server/.env
+Copy-Item client/.env.example client/.env
+npm run dev:server  # :5000/health, /api-docs
+npm run dev:client  # :5173
+"Register → New Project (My API, /v1) → Versions v1 + notes → Endpoints GET /hello → Keys Issue (copy once) → Invoke-RestMethod 
+:5000/gateway/<id>/hello?version=v1 -Headers @{x-api-key} → Logs/Dashboard. Admin: promote via DB role:admin, open /admin."
+
+7. Docker vs MongoDB — difference, which most effective?
+A: "Different things: MongoDB = database (stores users/projects/logs). Docker = container runner (packs backend + mongo + redis + 
+frontend so compose up works anywhere). Both used: Mongo stores truth, Docker ships it. Most effective for THIS project is MongoDB 
+(without it nothing works; without Docker you can still npm run dev). Prod: Atlas for DB + Docker for deploy."
+
+8. New project — why basePath & upstream URL?
+A: "basePath (e.g. /v1) namespaces routes + docs. upstreamUrl (e.g. https://api.example.com) switches gateway mode: empty = mock 
+(returns exampleResponse/generic, perfect for design/testing); set = proxy (forwards to real API, returns live data proxied:true). 
+Set later anytime."
+
+9. Roles and purpose?
+A: "Two: user (default developer) — owns only own projects/keys/logs (enforced owner==_id); admin — bypasses, sees all + /admin 
+(users suspend/role/delete, all projects/keys/requests, health, settings). JWT carries role. Register can't make admin — promote in DB."
+
+10. How to work with this project?
+A: "Dashboard empty at first is normal. Loop: Project → Version → Endpoint → Key → gateway call → Logs verify 200+latency → 
+Dashboard/Analytics → Webhooks (optional) → Docs Try-It to share. Admin checks health/users."
+
+11. Why create project first? What next, why?
+A: "Project is the root scope — keys, versions, endpoints, logs, webhooks all hang off projectId. Without it gateway has no 
+:projectId to route. Next: Version (so clients pin v1), then Endpoints (otherwise gateway 404 ENDPOINT_NOT_FOUND), then Key (auth), 
+then call → logs give feedback."
+
+12. Why create endpoint? Use/purpose?
+A: "Endpoint = allowed route (GET /hello v1). Gateway allow-lists: only defined method+path+version returns 200; anything else 404 + 
+api.error. So endpoints ARE the API contract — they drive mock responses, docs, per-endpoint analytics (mostUsed), and auth 
+(authRequired on/off)."
+
+13. Webhooks — why, use?
+A: "Push not poll: POST to your URL on api.request/api.error (+ webhook.test). Body {event,project,data,timestamp}, 
+headers X-Webhook-Event + X-Webhook-Signature=HMAC(secret,body). Secret = any random 32+ chars (blank auto-generates). 
+Use: Slack on errors, billing sync, 3x backoff with deliveries history."
+
+14. Docs section — purpose, how used?
+A: "Contract + playground: left = endpoint table + Swagger UI (/api-docs, JSON 21 paths); right = Try-It (method+endpoint+key+JSON 
+params → live gateway call + status/JSON + Copy URL). Use to test without curl and onboard consumers."
+PART B — Architecture & Engineering (my 8)
+
+15. Scale to 1M req/day?
+A: "Stateless backend ×N behind LB, shared Redis for limits, Mongo indexes (project,timestamp), TTL 90d on logs, byDay pre-agg + 
+30s cache, BullMQ for webhooks, CDN/static frontend. Bottleneck is log writes — batch or capped collection."
+
+16. How is gateway secured?
+A: "Helmet (framing fixed for docs), CORS allowlist, zod + sanitize, 1mb body, JWT + hashed keys (never logged), RBAC, no prod stacks, 
+httpOnly refresh, scopes/expiry/revoke."
+
+17. Why Mongo? Schema/indexes?
+A: "Logs/analytics are write-heavy JSON — flexible Mixed exampleResponse, easy pipelines for p95. Indexes: User.email, ApiKey.keyHash, 
+Endpoint(project,method,path,version), Log(project,timestamp), Version(project,version) unique. SQL would force rigid schemas for dynamic 
+payloads."
+
+18. Tests were removed — how to re-add?
+A: "Jest+supertest+memory-server: register→project→version→endpoint→key→gateway 200→revoke→401; 429 limit; Vitest for zod schemas. I deleted 
+them for clean ship; npm i -D jest supertest mongodb-memory-server vitest + restore tests/ restores it."
+
+19. Deploy?
+A: "Backend stateless → Render/Fly + Atlas MONGO_URI + Upstash REDIS_URL + FRONTEND_URL/secrets. Frontend npm run build → Vercel/Netlify with 
+VITE_*. Compose (nginx+node+mongo+redis) is prod-ready."
+
+20. Webhook delivery guarantee?
+A: "deliverOnce 3 tries (1s/3s backoff), WebhookDelivery each attempt (status/response/error), queue via BullMQ else inline. Replay by re-POST 
+/webhooks/:id/test or requeue delivery."
+
+21. Breaking changes?
+A: "Never edit v1 in place — create v2, dual-run, mark v1 deprecated, docs show both, clients migrate ?version=. Gateway fallback prevents 
+hard 404s during cutover."
+
+22. What next?
+A: "Per-endpoint scopes on keys, usage billing (Stripe from UsageRecord), audit logs, key expiry alerts, OpenAPI import. Biggest ROI: scopes 
+— currently key is per-project."
+PART C — 2-min closer (say this)
+"If you give me any backend, I turn it into a product in an hour: define it, version it, key it, throttle it, observe it. That's what this 
+project proves — plus I debugged it live: 404 key route, dead refresh, empty analytics, React object-child crash, all fixed with evidence."

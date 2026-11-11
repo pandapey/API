@@ -1,0 +1,112 @@
+DevAPI Hub — நேர்காணல் கேள்வி-பதில் (தமிழில்)
+பகுதி A — அடிப்படைகள்
+
+1. API என்றால் என்ன?
+பதில்: "API என்பது இரண்டு மென்பொருள்கள் பேசும் ஒப்பந்தம். இங்கே GET /hello அடித்தால் JSON வரும். 
+Gateway-ல் METHOD + path + version வரையறுத்து, key வைத்து யாரும் அழைக்கலாம்."
+
+2. API management என்றால் என்ன?
+பதில்: "API-யை வெளியிட்டு, பாதுகாத்து, கண்காணிக்கும் ஒரு இடம் — auth, quota, version, docs, logs, 
+analytics, webhooks எல்லாம். இந்த project அதுதான்: Projects/Keys/Gateway/Logs/Dashboard."
+
+3. API as a service platform-ஆக எப்படி பயன்படுத்துவது?
+பதில்: "நீங்கள் ஒப்பந்தம் வரையறுத்து, வாடிக்கையாளருக்கு key + limit கொடுப்பீர்கள், பயன்பாட்டிற்கு 
+கட்டணம் வசூலிப்பீர்கள். ஓட்டம்: Project உருவாக்கு → v1 → GET /hello → dk_live_ key (1000/min) → வாடிக்கையாளர் 
+gateway/<id>/hello?version=v1 அழைப்பு → logs/usage பார்த்து bill, limit தாண்டினால் 429."
+
+4. JWT என்றால் என்ன?
+பதில்: "JWT என்பது யார் என்று நிரூபிக்கும் கையொப்பமிட்ட token, session தேவையில்லை. இங்கே login 
+செய்தால் access 15 நிமிடம் (localStorage, Bearer) + refresh 7 நாள் httpOnly+DB. உள்ளே {sub, email, role} இருக்கும். 
+dk_live_ key வேறு — அது gateway-க்கு; JWT dashboard-க்கு."
+
+5. Portfolio / mock backend / gateway starter / learning lab-இல் எப்படி பயன்?
+- Portfolio: "Live Dashboard + Swagger + curl demo — full-stack தெரியும் என்று நிரூபிக்கும்."
+- Mock backend: "Upstream வேண்டாம் — exampleResponse உடனே திரும்பும். Frontend குழு காத்திருக்க வேண்டாம்."
+- Gateway starter: "Clone செய்து upstreamUrl வைத்தால் — auth/throttle/logs இலவசமாகக் கிடைக்கும்."
+- Learning lab: "JWT, hashing, Redis fallback, p95 pipeline, webhook HMAC — ஒவ்வொரு கருத்தையும் தனியாகப் பார்க்கலாம்."
+
+6. எப்படி இயக்குவது, எப்படி பயன்படுத்துவது?
+npm run install:all
+Copy-Item server/.env.example server/.env
+Copy-Item client/.env.example client/.env
+npm run dev:server  # :5000/health, /api-docs
+npm run dev:client  # :5173
+"Register → New Project (My API, /v1) → Versions v1 + notes → Endpoints GET /hello → Keys Issue 
+(ஒருமுறை copy) → gateway அழைப்பு → Logs/Dashboard பாருங்கள். Admin வேண்டுமானால் DB-யில் role:admin மாற்றுங்கள்."
+
+7. Docker vs MongoDB வேறுபாடு, எது பயனுள்ளது?
+பதில்: "இரண்டும் வேறு: MongoDB = தரவுத்தளம் (users/projects/logs சேமிக்கும் இடம்). Docker = container இயக்கி 
+(backend+mongo+redis+frontend எல்லாவற்றையும் pack செய்து எங்கும் ஓடவைக்கும்). இரண்டையும் பயன்படுத்துகிறோம்: 
+Mongo இல்லாமல் project ஓடாது, Docker இல்லாமல் npm run dev-இல் ஓடும். எனவே இந்த project-க்கு Mongo தான் முக்கியம். 
+Prod-இல் Atlas DB + Docker deploy."
+
+8. புதிய project உருவாக்கும்போது basePath & upstream URL ஏன்?
+பதில்: "basePath (/v1) வழிகளை தொகுக்க + docs-க்கு. upstreamUrl வைத்தால் gateway முறை மாறும்: காலியாக 
+இருந்தால் mock (exampleResponse திரும்பும்), வைத்தால் proxy (உண்மையான API தரவு proxied:true). பிறகும் மாற்றலாம்."
+
+9. Roles என்ன, நோக்கம் என்ன?
+பதில்: "இரண்டு role: user (இயல்பு developer) — தனது project/key/logs மட்டும் பார்க்கலாம் (owner==_id சரிபார்ப்பு). a
+dmin — எல்லாம் பார்க்கலாம் + /admin (users suspend/role/delete, அனைத்து projects/keys/requests, health, settings). 
+Register-இல் admin ஆக முடியாது — DB-யில் promote செய்ய வேண்டும்."
+
+10. இந்த project-உடன் எப்படி வேலை செய்வது?
+பதில்: "Dashboard காலியாக இருந்தால் பயப்பட வேண்டாம் — அது இயல்பு. சுழற்சி: 
+Project → Version → Endpoint → Key → gateway அழைப்பு → Logs-இல் 200+latency சரிபார் → Dashboard/Analytics → Webhooks 
+(விருப்பம்) → Docs Try-It."
+
+11. ஏன் முதலில் project உருவாக்க வேண்டும்? அடுத்து என்ன, ஏன்?
+பதில்: "Project தான் வேர் — key, version, endpoint, logs, webhook எல்லாம் projectId மேல்தான் நிற்கும். 
+இல்லாவிட்டால் gateway-க்கு வழி தெரியாது. அடுத்து Version (v1 — client lock செய்ய), பிறகு Endpoint 
+(இல்லாவிட்டால் gateway 404), பிறகு Key (auth), பிறகு அழைப்பு → logs-இல் பின்னூட்டம்."
+
+12. ஏன் endpoint உருவாக்க வேண்டும்? பயன் என்ன?
+பதில்: "Endpoint என்பது அனுமதிக்கப்பட்ட வழி (GET /hello v1). Gateway அனுமதி பட்டியல் போல: 
+வரையறுத்த method+path+version மட்டும் 200, வேறு எது அடித்தாலும் 404 + api.error. அதுதான் API ஒப்பந்தம் — mock பதில், 
+docs, mostUsed analytics, authRequired on/off எல்லாம் இங்கிருந்துதான் வருகிறது."
+
+13. Webhook என்றால் என்ன, ஏன் உருவாக்க வேண்டும்?
+பதில்: "Poll செய்யாமல் தானாக வரும் POST — api.request/api.error நடந்தால் உங்கள் URL-க்கு போகும். 
+உடல் {event,project,data,timestamp}, தலைப்பு X-Webhook-Signature=HMAC(secret,body). Secret என்பது சீரற்ற 32+ 
+எழுத்துகள் (காலி என்றால் தானாக உருவாகும்). பயன்: பிழை வந்தால் Slack எச்சரிக்கை, billing ஒத்திசைவு. 
+3 முறை மறுமுயற்சி + delivery வரலாறு உள்ளது."
+
+14. Docs பிரிவு என்ன நோக்கம், எப்படி பயன்?
+பதில்: "Docs என்பது ஒப்பந்தம் + விளையாட்டு மைதானம்: இடது பக்கம் endpoint அட்டவணை + Swagger UI 
+(/api-docs, 21 paths), வலது பக்கம் Try-It (method+endpoint+key+JSON கொடுத்து நேரடி gateway அழைப்பு + பதில்). 
+curl/Postman வேண்டாம் — இங்கே சோதித்து URL copy செய்து பகிரலாம்."
+பகுதி B — பொறியியல்
+
+15. 1M கோரிக்கை/நாள் என்றால் எப்படி scale செய்வது?
+பதில்: "Backend stateless ×N, Redis பகிர்ந்த limit, Mongo குறியீடு (project,timestamp), logs 90 நாள் TTL, 
+byDay தொகுப்பு + 30வி cache, BullMQ webhooks. தடை log எழுத்து — தொகுதியாக எழுத வேண்டும்."
+
+16. Gateway பாதுகாப்பு எப்படி?
+பதில்: "Helmet, CORS பட்டியல், zod + sanitize, 1mb உடல், JWT + hash key (logs-இல் ரகசியம் இல்லை), 
+RBAC, prod-இல் stack இல்லை, httpOnly refresh, expiry/revoke."
+
+17. ஏன் Mongo? Schema/index?
+பதில்: "Logs அதிக எழுத்து JSON — நெகிழ்வான Mixed, p95 pipeline எளிது. குறியீடு: email, keyHash, 
+Endpoint(project,method,path,version), Log(project,timestamp). SQL-இல் மாறும் payload கஷ்டம்."New session - 2026-10-07T04:11:29.398Z
+
+18. Test எப்படி? நீக்கிவிட்டாயே?Context
+253,920 tokens
+பதில்: "Jest+supertest+memory-server: register→project→endpoint→key→gateway 200→revoke→401; 429 சோதனை. 
+சுத்தமாக அனுப்ப நீக்கினேன்; வேண்டுமானால் மீண்டும் நிறுவி tests/ மீட்கலாம்."24% used
+$0.00 spent
+
+19. Deploy எப்படி?LSP
+LSPs are disabled
+பதில்: "Backend Render/Fly + Atlas/Upstash, frontend Vercel (VITE_*), Compose prod-தயார்."
+
+20. Webhook தவறினால்?
+பதில்: "3 மறுமுயற்சி (1வி/3வி), WebhookDelivery வரலாறு, /test-இல் மீண்டும் இயக்கலாம்."
+
+21. Breaking change?
+பதில்: "v1-ஐ திருத்தக் கூடாது — v2 உருவாக்கி இரட்டையாக இயக்கி, v1 deprecate, client ?version= மாறுவார்கள்."
+
+22. அடுத்து என்ன உருவாக்குவீர்கள்?
+பதில்: "Endpoint-வாரியாக scopes, பயன்பாட்டு billing, audit logs. முதலில் scopes — இப்போது key project-நிலைதான்."
+முடிவு (2 நிமிடம் — இப்படி சொல்லுங்கள்)
+"எந்த backend கொடுத்தாலும் நான் ஒரு மணி நேரத்தில் product ஆக்குவேன்: வரையறு, version, key, throttle, கண்காணி. 
+இதைத்தான் இந்த project நிரூபிக்கிறது — நானே நேரடியாக debug செய்து சரி செய்தேன்: key 404, refresh die, empty analytics, 
+React crash எல்லாம் ஆதாரத்துடன்."

@@ -1,0 +1,45 @@
+{
+  "name": "devapi-hub-server",
+  "version": "1.0.0",
+  "description": "DevAPI Hub backend - mock API platform",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed:demo": "node src/scripts/seedDemo.js",
+    "test": "jest --runInBand --detectOpenHandles"
+  },
+  "dependencies": {
+    "axios": "^1.7.4",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.4.0",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-mongo-sanitize": "^2.2.0",
+    "express-rate-limit": "^7.3.1",
+    "helmet": "^7.1.0",
+    "ioredis": "^5.3.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongo-sanitize": "^1.1.0",
+    "mongoose": "^8.5.0",
+    "node-cron": "^3.0.3",
+    "socket.io": "^4.7.5",
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^9.0.0",
+    "winston": "^3.13.0",
+    "yamljs": "^0.3.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "mongodb-memory-server": "^9.5.0",
+    "nodemon": "^3.1.4",
+    "supertest": "^6.3.4"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testTimeout": 30000
+  }
+}

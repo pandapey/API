@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: devapi-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: devapi-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
+  backend:
+    build: ./server
+    container_name: devapi-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./server/.env
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - MONGO_URI=mongodb://mongodb:27017/devapi-hub
+      - REDIS_URL=redis://redis:6379
+      - FRONTEND_URL=http://localhost:5173
+    depends_on:
+      - mongodb
+      - redis
+
+  frontend:
+    build: ./client
+    container_name: devapi-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data:
+  redis-data:
