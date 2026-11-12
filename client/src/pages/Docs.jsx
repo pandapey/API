@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, ExternalLink, Play, Zap } from 'lucide-react';
+import { BookOpen, ExternalLink, Play, Plus, Trash2, Zap } from 'lucide-react';
 import axios from 'axios';
 import { projectService } from '../services/projectService.js';
 import { useProjects } from '../hooks/useProjects.js';
@@ -22,7 +22,11 @@ export default function Docs({ embedded = false, projectId: fixedProjectId, proj
   const [endpoints, setEndpoints] = useState([]);
   const [loading, setLoading] = useState(false);
   const [swaggerOk, setSwaggerOk] = useState(null);
-  const [tryState, setTryState] = useState({ endpoint: '', apiKey: '', params: '{}', body: '{}', method: 'GET', response: null, busy: false });
+  const [tryState, setTryState] = useState({
+    endpoint: '', apiKey: '', version: 'v1',
+    params: [{ key: '', value: '' }], // key/value rows — no raw JSON needed
+    body: '{}', method: 'GET', response: null, busy: false,
+  });
 
   // Reliable Swagger reachability: fetch /api-docs.json (iframe onError never fires for HTTP/CORS).
   useEffect(() => {
@@ -69,20 +73,32 @@ export default function Docs({ embedded = false, projectId: fixedProjectId, proj
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+  // --- Try-it console: query-param row helpers -----------------------------
+  const setParam = (i, field, v) => setTryState((s) => ({
+    ...s,
+    params: s.params.map((p, idx) => (idx === i ? { ...p, [field]: v } : p)),
+  }));
+  const addParam = () => setTryState((s) => ({ ...s, params: [...s.params, { key: '', value: '' }] }));
+  const removeParam = (i) => setTryState((s) => {
+    const next = s.params.filter((_, idx) => idx !== i);
+    return { ...s, params: next.length ? next : [{ key: '', value: '' }] };
+  });
+
+  // Named params (from the rows) + the mandatory gateway `version` param.
+  const buildUrl = () => {
+    const path = tryState.endpoint.startsWith('/') ? tryState.endpoint : `/${tryState.endpoint}`;
+    const usp = new URLSearchParams();
+    tryState.params.forEach((p) => {
+      if (p.key.trim()) usp.append(p.key.trim(), p.value);
+    });
+    usp.set('version', tryState.version || 'v1');
+    return `${GATEWAY_URL}/${projectId || '<projectId>'}${path}?${usp.toString()}`;
+  };
+
   const runTryIt = async () => {
     if (!projectId) return toast.error('Pick a project first');
     if (!tryState.endpoint) return toast.error('Pick an endpoint first');
     if (!tryState.apiKey) return toast.error('Enter an API key');
-    let query = '';
-    try {
-      const p = JSON.parse(tryState.params || '{}');
-      // gateway expects ?version=v1 plus any extra query params
-      p.version = p.version || 'v1';
-      query = new URLSearchParams(p).toString();
-      if (query) query = `?${query}`;
-    } catch {
-      return toast.error('Params must be valid JSON');
-    }
     let body;
     const needsBody = ['POST', 'PUT', 'PATCH'].includes((tryState.method || 'GET').toUpperCase());
     if (needsBody && (tryState.body || '').trim()) {
@@ -94,8 +110,7 @@ export default function Docs({ embedded = false, projectId: fixedProjectId, proj
     }
     setTryState((s) => ({ ...s, busy: true, response: null }));
     try {
-      const path = tryState.endpoint.startsWith('/') ? tryState.endpoint : `/${tryState.endpoint}`;
-      const url = `${GATEWAY_URL}/${projectId}${path}${query}`;
+      const url = buildUrl();
       const res = await axios({
         url,
         method: tryState.method || 'GET',
@@ -186,15 +201,59 @@ export default function Docs({ embedded = false, projectId: fixedProjectId, proj
               <select aria-label="HTTP method" value={tryState.method} onChange={(e) => setTryState((s) => ({ ...s, method: e.target.value }))} className="input font-mono">
                 {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => <option key={m}>{m}</option>)}
               </select>
-              <input aria-label="Endpoint path" value={tryState.endpoint} onChange={(e) => setTryState((s) => ({ ...s, endpoint: e.target.value }))} placeholder="/v1/…" className="input col-span-3 font-mono" autoComplete="off" spellCheck={false} />
+              <input aria-label="Endpoint path" value={tryState.endpoint} onChange={(e) => setTryState((s) => ({ ...s, endpoint: e.target.value }))} placeholder="/current" className="input col-span-2 font-mono" autoComplete="off" spellCheck={false} />
+              <input aria-label="Version" value={tryState.version} onChange={(e) => setTryState((s) => ({ ...s, version: e.target.value }))} placeholder="v1" title="Gateway ?version= param" className="input font-mono" autoComplete="off" spellCheck={false} />
             </div>
             <div>
               <label htmlFor="try-key" className="label">API key</label>
               <input id="try-key" value={tryState.apiKey} onChange={(e) => setTryState((s) => ({ ...s, apiKey: e.target.value }))} placeholder="dv_live_…" className="input font-mono" autoComplete="off" spellCheck={false} />
             </div>
             <div>
-              <label htmlFor="try-params" className="label">Query params (JSON)</label>
-              <textarea id="try-params" value={tryState.params} onChange={(e) => setTryState((s) => ({ ...s, params: e.target.value }))} rows={3} className="input font-mono !text-xs" placeholder='{"city":"Berlin"}' />
+              <div className="flex items-center justify-between">
+                <span id="try-params-label" className="label !mb-0">Query params</span>
+                <button
+                  type="button"
+                  onClick={addParam}
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-brand-600 transition hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-950/40"
+                >
+                  <Plus size={13} /> Add param
+                </button>
+              </div>
+              <div className="mt-1.5 space-y-1.5">
+                {tryState.params.map((p, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <input
+                      aria-label={`Query param ${i + 1} name`}
+                      value={p.key}
+                      onChange={(e) => setParam(i, 'key', e.target.value)}
+                      placeholder="name"
+                      className="input !py-1.5 !text-xs font-mono"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <span className="text-xs text-slate-400" aria-hidden="true">=</span>
+                    <input
+                      aria-label={`Query param ${i + 1} value`}
+                      value={p.value}
+                      onChange={(e) => setParam(i, 'value', e.target.value)}
+                      placeholder="value"
+                      className="input !py-1.5 !text-xs font-mono"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeParam(i)}
+                      aria-label={`Remove param ${p.key || i + 1}`}
+                      title="Remove param"
+                      className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/40"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="form-hint">Appended to the URL automatically — <code>version</code> is always included.</p>
             </div>
             {['POST', 'PUT', 'PATCH'].includes((tryState.method || '').toUpperCase()) && (
               <div>
@@ -204,8 +263,9 @@ export default function Docs({ embedded = false, projectId: fixedProjectId, proj
             )}
             <div className="flex items-center gap-2">
               <button onClick={runTryIt} disabled={tryState.busy} className="btn-primary"><Play size={15} /> {tryState.busy ? 'Calling…' : 'Send request'}</button>
-              {tryState.endpoint && projectId && <CopyButton text={`${GATEWAY_URL}/${projectId}${tryState.endpoint.startsWith('/') ? tryState.endpoint : `/${tryState.endpoint}`}?version=v1`} label="Copy URL" />}
+              {tryState.endpoint && projectId && <CopyButton text={buildUrl()} label="Copy URL" />}
             </div>
+            <p className="break-all font-mono text-[11px] text-slate-500">{tryState.method} {buildUrl()}</p>
             {tryState.response && (
               <div>
                 <p className="mb-1 font-mono text-xs text-slate-500">→ {tryState.response.status}</p>
